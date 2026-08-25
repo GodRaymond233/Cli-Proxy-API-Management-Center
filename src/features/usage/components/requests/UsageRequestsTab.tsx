@@ -170,7 +170,7 @@ export function UsageRequestsTab({ records }: UsageRequestsTabProps) {
         <div className={styles.pagination}>
           <Button
             size="sm"
-            variant="outline"
+            variant="secondary"
             disabled={currentPage <= 1}
             onClick={() => setPage((p) => Math.max(1, p - 1))}
           >
@@ -181,7 +181,7 @@ export function UsageRequestsTab({ records }: UsageRequestsTabProps) {
           </span>
           <Button
             size="sm"
-            variant="outline"
+            variant="secondary"
             disabled={currentPage >= totalPages}
             onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
           >
