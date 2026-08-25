@@ -20,7 +20,7 @@ export function UsageRequestDetailSheet({
   const dateStr = new Date(record.timestamp).toLocaleString();
 
   return (
-    <Sheet isOpen={isOpen} onClose={onClose} title="请求日志详情">
+    <Sheet open={isOpen} onClose={onClose} title="请求日志详情">
       <div className={styles.content}>
         <div className={styles.section}>
           <div className={styles.sectionTitle}>基本信息</div>
@@ -111,7 +111,7 @@ export function UsageRequestDetailSheet({
 
         <div className={styles.footer}>
           <Button
-            variant="outline"
+            variant="secondary"
             onClick={() => copyToClipboard(JSON.stringify(record, null, 2))}
           >
             复制完整 JSON

@@ -1,5 +1,4 @@
 import { useState, useMemo, useEffect } from 'react';
-import { useTranslation } from 'react-i18next';
 import type { UsageTimeRange, UsageFilterParams } from '@/types/usage';
 import { useUsageRecords } from './hooks/useUsageRecords';
 import { useUsageAnalytics } from './hooks/useUsageAnalytics';
@@ -18,7 +17,6 @@ import styles from './UsagePage.module.scss';
 type ActiveTab = 'overview' | 'analytics' | 'requests' | 'pricing';
 
 export function UsagePage() {
-  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
   const [timeRange, setTimeRange] = useState<UsageTimeRange>('24h');
   const [autoRefresh, setAutoRefresh] = useState(false);
@@ -97,7 +95,7 @@ export function UsagePage() {
           </div>
           <Button
             size="sm"
-            variant="outline"
+            variant="secondary"
             onClick={() => refetch()}
             title="刷新数据"
           >
@@ -143,14 +141,14 @@ export function UsagePage() {
           <UsageTimeRangePicker value={timeRange} onChange={setTimeRange} />
           <Button
             size="sm"
-            variant={autoRefresh ? 'primary' : 'outline'}
+            variant={autoRefresh ? 'primary' : 'secondary'}
             onClick={() => setAutoRefresh((prev) => !prev)}
           >
             {autoRefresh ? '自动刷新中 (10s)' : '开启自动刷新'}
           </Button>
           <Button
             size="sm"
-            variant="outline"
+            variant="secondary"
             onClick={loadSampleData}
             title="生成丰富演示数据"
           >
@@ -158,7 +156,7 @@ export function UsagePage() {
           </Button>
           <Button
             size="sm"
-            variant="outline"
+            variant="secondary"
             onClick={clearRecords}
             title="清空记录"
           >
