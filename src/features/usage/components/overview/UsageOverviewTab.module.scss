@@ -1,0 +1,22 @@
+.container {
+  display: flex;
+  flex-direction: column;
+}
+
+.chartsGrid {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 16px;
+
+  @media (max-width: 1024px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.trendCol {
+  min-width: 0;
+}
+
+.tokenCol {
+  min-width: 0;
+}
