@@ -68,7 +68,7 @@ export function ModelPricingModal({
 
   return (
     <Modal
-      isOpen={isOpen}
+      open={isOpen}
       onClose={onClose}
       title={initialRule ? '编辑模型定价' : '添加自定义模型定价'}
     >
@@ -134,7 +134,7 @@ export function ModelPricingModal({
         </div>
 
         <div className={styles.actions}>
-          <Button type="button" variant="outline" onClick={onClose}>
+          <Button type="button" variant="secondary" onClick={onClose}>
             取消
           </Button>
           <Button type="submit" variant="primary">

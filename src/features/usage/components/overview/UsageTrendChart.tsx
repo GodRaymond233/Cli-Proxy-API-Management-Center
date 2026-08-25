@@ -27,21 +27,24 @@ export function UsageTrendChart({ trends }: UsageTrendChartProps) {
   const paddingX = 20;
   const paddingY = 20;
 
-  const points: [number, number][] = useMemo(() => {
+  const points: { x: number; y: number }[] = useMemo(() => {
     if (values.length < 2) return [];
     return values.map((val, idx) => {
       const x = paddingX + (idx / (values.length - 1)) * (width - 2 * paddingX);
       const y = height - paddingY - (val / maxVal) * (height - 2 * paddingY);
-      return [x, y];
+      return { x, y };
     });
   }, [values, maxVal, width, height, paddingX, paddingY]);
 
-  const linePath = useMemo(() => buildSmoothLinePath(points), [points]);
+  const linePath = useMemo(
+    () => buildSmoothLinePath(points, paddingY, height - paddingY),
+    [points, height, paddingY]
+  );
 
   const areaPath = useMemo(() => {
     if (!points.length) return '';
-    const firstX = points[0][0];
-    const lastX = points[points.length - 1][0];
+    const firstX = points[0].x;
+    const lastX = points[points.length - 1].x;
     const bottomY = height - paddingY;
     return `${linePath} L ${lastX} ${bottomY} L ${firstX} ${bottomY} Z`;
   }, [points, linePath, height, paddingY]);
@@ -103,11 +106,11 @@ export function UsageTrendChart({ trends }: UsageTrendChartProps) {
           {linePath && <path d={linePath} fill="none" stroke="#3b82f6" strokeWidth="2.5" strokeLinecap="round" />}
 
           {/* Interaction Points */}
-          {points.map(([px, py], idx) => (
+          {points.map((pt, idx) => (
             <g key={idx} onMouseEnter={() => setHoverIndex(idx)}>
-              <circle cx={px} cy={py} r="10" fill="transparent" className={styles.hitArea} />
+              <circle cx={pt.x} cy={pt.y} r="10" fill="transparent" className={styles.hitArea} />
               {(hoverIndex === idx || idx === points.length - 1) && (
-                <circle cx={px} cy={py} r="4.5" fill="#3b82f6" stroke="#ffffff" strokeWidth="2" />
+                <circle cx={pt.x} cy={pt.y} r="4.5" fill="#3b82f6" stroke="#ffffff" strokeWidth="2" />
               )}
             </g>
           ))}
@@ -118,8 +121,8 @@ export function UsageTrendChart({ trends }: UsageTrendChartProps) {
           <div
             className={styles.tooltip}
             style={{
-              left: `${(points[hoverIndex][0] / width) * 100}%`,
-              top: `${(points[hoverIndex][1] / height) * 100}%`,
+              left: `${(points[hoverIndex].x / width) * 100}%`,
+              top: `${(points[hoverIndex].y / height) * 100}%`,
             }}
           >
             <div className={styles.tooltipTime}>{activeBucket.hourLabel}</div>

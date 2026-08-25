@@ -75,7 +75,7 @@ export function UsagePricingTab({ records }: UsagePricingTabProps) {
           </div>
           <Button
             size="sm"
-            variant="outline"
+            variant="secondary"
             onClick={() => {
               setEditingRule(null);
               setModalOpen(true);

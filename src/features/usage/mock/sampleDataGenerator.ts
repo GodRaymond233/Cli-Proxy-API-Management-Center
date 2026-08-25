@@ -60,12 +60,7 @@ const SAMPLE_MODELS: ModelSpec[] = [
   },
 ];
 
-const SOURCES = ['摸鱼站Pro分组', 'godraymond233@gmai...', 'VSCode-Claude-Ext', 'Cursor-IDE', 'Terminal-CLI'];
 const KEYS = ['cpa-••••0849', 'cpa-••••3321', 'cpa-••••9912'];
-
-function randomBetween(min: number, max: number): number {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
-}
 
 function pickRandom<T>(items: T[]): T {
   return items[Math.floor(Math.random() * items.length)];
