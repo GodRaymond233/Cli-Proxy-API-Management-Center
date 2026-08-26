@@ -19,13 +19,18 @@ export function UsageAnalyticsTab({
   return (
     <div className={styles.container}>
       <div className={styles.grid}>
-        <AnalyticsRankCard title="模型使用" subtitle="按 Token 排序" items={modelRanks} />
-        <AnalyticsRankCard title="Provider" subtitle="按 Token 排序" items={providerRanks} />
-        <AnalyticsRankCard title="请求来源" subtitle="按 Token 排序" items={keyRanks} />
-        <AnalyticsRankCard title="鉴权密钥" subtitle="按 Token 排序" items={keyRanks} />
+        <div data-reveal>
+          <AnalyticsRankCard title="模型使用" subtitle="按 Token 排序" items={modelRanks} />
+        </div>
+        <div data-reveal>
+          <AnalyticsRankCard title="Provider" subtitle="按 Token 排序" items={providerRanks} />
+        </div>
+        <div data-reveal>
+          <AnalyticsRankCard title="鉴权密钥" subtitle="按 Token 排序" items={keyRanks} />
+        </div>
       </div>
 
-      <div className={styles.fullWidth}>
+      <div className={styles.fullWidth} data-reveal>
         <HourlyDistributionCard distribution={hourlyDistribution} />
       </div>
     </div>
