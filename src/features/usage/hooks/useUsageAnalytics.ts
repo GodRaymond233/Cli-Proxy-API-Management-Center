@@ -7,7 +7,7 @@ import type {
   HourlyDistributionItem,
 } from '@/types/usage';
 
-export function useUsageAnalytics(records: UsageRecord[]) {
+export function useUsageAnalytics(records: UsageRecord[], rangeStartTime?: number) {
   // 1. KPI Summary
   const kpi = useMemo<UsageKpiSummary>(() => {
     if (!records.length) {
@@ -116,6 +116,27 @@ export function useUsageAnalytics(records: UsageRecord[]) {
   const hourlyTrends = useMemo<HourlyTrendBucket[]>(() => {
     if (!records.length) return [];
 
+    const createEmptyBucket = (hourTs: number): HourlyTrendBucket => {
+      const date = new Date(hourTs);
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const hours = String(date.getHours()).padStart(2, '0');
+      return {
+        hourTimestamp: hourTs,
+        hourLabel: `${month}-${day} ${hours}:00`,
+        requestCount: 0,
+        successCount: 0,
+        failureCount: 0,
+        totalTokens: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        reasoningTokens: 0,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+        estimatedCostUsd: 0,
+      };
+    };
+
     const bucketMap = new Map<number, HourlyTrendBucket>();
 
     records.forEach((r) => {
@@ -125,23 +146,7 @@ export function useUsageAnalytics(records: UsageRecord[]) {
 
       let bucket = bucketMap.get(hourTs);
       if (!bucket) {
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
-        const hours = String(date.getHours()).padStart(2, '0');
-        bucket = {
-          hourTimestamp: hourTs,
-          hourLabel: `${month}-${day} ${hours}:00`,
-          requestCount: 0,
-          successCount: 0,
-          failureCount: 0,
-          totalTokens: 0,
-          inputTokens: 0,
-          outputTokens: 0,
-          reasoningTokens: 0,
-          cacheReadTokens: 0,
-          cacheWriteTokens: 0,
-          estimatedCostUsd: 0,
-        };
+        bucket = createEmptyBucket(hourTs);
         bucketMap.set(hourTs, bucket);
       }
 
@@ -161,11 +166,27 @@ export function useUsageAnalytics(records: UsageRecord[]) {
       bucket.estimatedCostUsd += r.estimatedCostUsd;
     });
 
-    const sorted = Array.from(bucketMap.values()).sort(
-      (a, b) => a.hourTimestamp - b.hourTimestamp
-    );
-    return sorted;
-  }, [records]);
+    // 横轴必须是连续时间轴：从筛选起点（无则取最早记录）到当前小时，
+    // 无数据的小时补零桶，否则曲线按桶序号均布、与坐标轴时间不对齐
+    const nowHour = new Date();
+    nowHour.setMinutes(0, 0, 0);
+    const endTs = nowHour.getTime();
+
+    let startTs: number;
+    if (rangeStartTime) {
+      const start = new Date(rangeStartTime);
+      start.setMinutes(0, 0, 0);
+      startTs = start.getTime();
+    } else {
+      startTs = Math.min(...bucketMap.keys());
+    }
+
+    const filled: HourlyTrendBucket[] = [];
+    for (let ts = startTs; ts <= endTs; ts += 60 * 60 * 1000) {
+      filled.push(bucketMap.get(ts) ?? createEmptyBucket(ts));
+    }
+    return filled;
+  }, [records, rangeStartTime]);
 
   // 3. Model Usage Rankings
   const modelRanks = useMemo<RankItem[]>(() => {

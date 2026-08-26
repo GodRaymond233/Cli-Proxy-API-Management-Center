@@ -52,7 +52,7 @@
 .valHighlight {
   font-size: 14px;
   font-weight: 600;
-  color: #3b82f6;
+  color: var(--viz-success);
 }
 
 .statusBadge {
@@ -64,13 +64,13 @@
   width: fit-content;
 
   &.ok {
-    background: rgba(16, 185, 129, 0.1);
-    color: #10b981;
+    background: color-mix(in srgb, var(--viz-success) 12%, transparent);
+    color: var(--viz-success);
   }
 
   &.err {
-    background: rgba(239, 68, 68, 0.1);
-    color: #ef4444;
+    background: color-mix(in srgb, var(--viz-failure) 12%, transparent);
+    color: var(--viz-failure);
   }
 }
 
@@ -95,6 +95,10 @@
   font-size: 14px;
   font-weight: 600;
   color: var(--text-primary);
+
+  &.hitRate {
+    color: var(--viz-success);
+  }
 }
 
 .tokenLabel {
@@ -105,10 +109,10 @@
 
 .errBox {
   padding: 10px;
-  background: rgba(239, 68, 68, 0.05);
-  border: 1px solid rgba(239, 68, 68, 0.2);
+  background: color-mix(in srgb, var(--viz-failure) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--viz-failure) 22%, transparent);
   border-radius: var(--radius-md, 8px);
-  color: #ef4444;
+  color: var(--viz-failure);
   font-size: 12px;
   font-family: monospace;
 }

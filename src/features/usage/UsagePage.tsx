@@ -8,6 +8,10 @@ import { UsageAnalyticsTab } from './components/analytics/UsageAnalyticsTab';
 import { UsageRequestsTab } from './components/requests/UsageRequestsTab';
 import { UsagePricingTab } from './components/pricing/UsagePricingTab';
 import { Button } from '@/components/ui/Button';
+import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
+import { IconRefreshCw, IconTimer, IconTrash2 } from '@/components/ui/icons';
+import { useHeaderRefresh } from '@/hooks/useHeaderRefresh';
+import { useRevealGroup } from '@/hooks/motion';
 import { logsApi } from '@/services/api/logs';
 import { parseUsageRecordFromLog } from './collector/logCollector';
 import { usageStorage } from './storage/usageStorage';
@@ -16,11 +20,21 @@ import styles from './UsagePage.module.scss';
 
 type ActiveTab = 'overview' | 'analytics' | 'requests' | 'pricing';
 
+const TABS: { key: ActiveTab; label: string }[] = [
+  { key: 'overview', label: '总览' },
+  { key: 'analytics', label: '分析' },
+  { key: 'requests', label: '请求明细' },
+  { key: 'pricing', label: '价格统计' },
+];
+
 export function UsagePage() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
   const [timeRange, setTimeRange] = useState<UsageTimeRange>('24h');
   const [autoRefresh, setAutoRefresh] = useState(false);
   const getAllRules = usePricingStore((state) => state.getAllRules);
+
+  // 切换页签时重放入场级联（容器随 key 重挂载）
+  const revealRef = useRevealGroup<HTMLDivElement>();
 
   const filterParams: UsageFilterParams = useMemo(() => {
     const now = Date.now();
@@ -50,7 +64,9 @@ export function UsagePage() {
     filterParams,
     autoRefresh
   );
-  const analytics = useUsageAnalytics(records);
+  const analytics = useUsageAnalytics(records, filterParams.timeRange.startTime);
+
+  useHeaderRefresh(() => refetch());
 
   // Background log parser sync from /logs
   useEffect(() => {
@@ -79,94 +95,59 @@ export function UsagePage() {
   }, [getAllRules, refetch]);
 
   return (
-    <div className={styles.page}>
-      {/* Top Banner Header */}
-      <div className={styles.header}>
-        <div className={styles.headerLeft}>
-          <div className={styles.badge}>LOCAL USAGE</div>
-          <h1 className={styles.title}>使用记录</h1>
-        </div>
+    <div className={styles.container}>
+      <h1 className={styles.pageTitle}>使用明细</h1>
 
-        <div className={styles.headerRight}>
-          <div className={styles.collectorStatus}>
-            <span className={styles.greenDot} />
-            <span>本地采集进行中</span>
-            <span className={styles.countBadge}>{totalCount.toLocaleString()} 条长期记录</span>
-          </div>
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={() => refetch()}
-            title="刷新数据"
+      <div className={styles.tabBar}>
+        {TABS.map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            className={`${styles.tabItem} ${activeTab === tab.key ? styles.tabActive : ''}`}
+            onClick={() => setActiveTab(tab.key)}
           >
-            🔄
-          </Button>
-        </div>
+            {tab.label}
+          </button>
+        ))}
       </div>
 
-      {/* Sub Tabs Navigation */}
-      <div className={styles.navBar}>
-        <div className={styles.tabButtons}>
-          <button
-            type="button"
-            className={`${styles.tabBtn} ${activeTab === 'overview' ? styles.active : ''}`}
-            onClick={() => setActiveTab('overview')}
-          >
-            📊 总览
-          </button>
-          <button
-            type="button"
-            className={`${styles.tabBtn} ${activeTab === 'analytics' ? styles.active : ''}`}
-            onClick={() => setActiveTab('analytics')}
-          >
-            📈 分析
-          </button>
-          <button
-            type="button"
-            className={`${styles.tabBtn} ${activeTab === 'requests' ? styles.active : ''}`}
-            onClick={() => setActiveTab('requests')}
-          >
-            📑 请求明细
-          </button>
-          <button
-            type="button"
-            className={`${styles.tabBtn} ${activeTab === 'pricing' ? styles.active : ''}`}
-            onClick={() => setActiveTab('pricing')}
-          >
-            💲 价格统计
-          </button>
-        </div>
+      <div className={styles.toolbar}>
+        <UsageTimeRangePicker value={timeRange} onChange={setTimeRange} />
 
-        <div className={styles.globalActions}>
-          <UsageTimeRangePicker value={timeRange} onChange={setTimeRange} />
-          <Button
-            size="sm"
-            variant={autoRefresh ? 'primary' : 'secondary'}
-            onClick={() => setAutoRefresh((prev) => !prev)}
-          >
-            {autoRefresh ? '自动刷新中 (10s)' : '开启自动刷新'}
+        <div className={styles.toolbarRight}>
+          <span className={styles.liveStatus} title="本地日志采集进行中">
+            <span className={styles.greenDot} />
+            {totalCount.toLocaleString()} 条长期记录
+          </span>
+          <Button size="sm" variant="secondary" onClick={() => refetch()} title="刷新数据">
+            <span className={styles.buttonContent}>
+              <IconRefreshCw size={16} />
+              刷新
+            </span>
           </Button>
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={loadSampleData}
-            title="生成丰富演示数据"
-          >
+          <ToggleSwitch
+            checked={autoRefresh}
+            onChange={(value) => setAutoRefresh(value)}
+            label={
+              <span className={styles.switchLabel}>
+                <IconTimer size={16} />
+                自动刷新
+              </span>
+            }
+          />
+          <Button size="sm" variant="secondary" onClick={loadSampleData} title="生成丰富演示数据">
             生成模拟数据
           </Button>
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={clearRecords}
-            title="清空记录"
-          >
-            清空
+          <Button size="sm" variant="danger" onClick={clearRecords} title="清空记录">
+            <span className={styles.buttonContent}>
+              <IconTrash2 size={16} />
+              清空
+            </span>
           </Button>
         </div>
       </div>
 
-      {/* Tab Content Display */}
-      <div className={styles.content}>
+      <div className={styles.content} key={activeTab} ref={revealRef}>
         {activeTab === 'overview' && (
           <UsageOverviewTab kpi={analytics.kpi} trends={analytics.hourlyTrends} />
         )}

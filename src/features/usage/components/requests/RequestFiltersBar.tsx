@@ -1,3 +1,6 @@
+import { Input } from '@/components/ui/Input';
+import { Select } from '@/components/ui/Select';
+import { IconSearch, IconX } from '@/components/ui/icons';
 import styles from './RequestFiltersBar.module.scss';
 
 interface RequestFiltersBarProps {
@@ -8,7 +11,7 @@ interface RequestFiltersBarProps {
   selectedProvider: string;
   onProviderChange: (p: string) => void;
   selectedStatusGroup: string;
-  onStatusGroupChange: (s: any) => void;
+  onStatusGroupChange: (s: string) => void;
   models: string[];
   providers: string[];
   totalCount: number;
@@ -29,59 +32,68 @@ export function RequestFiltersBar({
 }: RequestFiltersBarProps) {
   return (
     <div className={styles.bar}>
-      <div className={styles.left}>
-        <div className={styles.searchBox}>
-          <span className={styles.searchIcon}>🔍</span>
-          <input
-            type="text"
-            className={styles.input}
-            placeholder="搜索 Request ID、模型、Key..."
-            value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
-          />
-        </div>
-
-        <select
-          className={styles.select}
-          value={selectedModel}
-          onChange={(e) => onModelChange(e.target.value)}
-        >
-          <option value="">全部模型</option>
-          {models.map((m) => (
-            <option key={m} value={m}>
-              {m}
-            </option>
-          ))}
-        </select>
-
-        <select
-          className={styles.select}
-          value={selectedProvider}
-          onChange={(e) => onProviderChange(e.target.value)}
-        >
-          <option value="">全部 Provider</option>
-          {providers.map((p) => (
-            <option key={p} value={p}>
-              {p}
-            </option>
-          ))}
-        </select>
-
-        <select
-          className={styles.select}
-          value={selectedStatusGroup}
-          onChange={(e) => onStatusGroupChange(e.target.value)}
-        >
-          <option value="all">全部结果</option>
-          <option value="2xx">2xx 成功</option>
-          <option value="4xx">4xx 客户端异常</option>
-          <option value="5xx">5xx 服务端错误</option>
-        </select>
+      <div className={styles.searchWrapper}>
+        <Input
+          value={searchQuery}
+          onChange={(e) => onSearchChange(e.target.value)}
+          placeholder="搜索 Request ID、模型、Key、IP..."
+          className={styles.searchInput}
+          rightElement={
+            searchQuery ? (
+              <button
+                type="button"
+                className={styles.searchClear}
+                onClick={() => onSearchChange('')}
+                title="清除"
+                aria-label="清除"
+              >
+                <IconX size={16} />
+              </button>
+            ) : (
+              <IconSearch size={16} className={styles.searchIcon} />
+            )
+          }
+        />
       </div>
 
-      <div className={styles.right}>
-        <span className={styles.countText}>共 <b>{totalCount}</b> 条记录</span>
-      </div>
+      <Select
+        size="sm"
+        value={selectedModel}
+        onChange={onModelChange}
+        ariaLabel="模型筛选"
+        options={[
+          { value: '', label: '全部模型' },
+          ...models.map((m) => ({ value: m, label: m })),
+        ]}
+      />
+
+      <Select
+        size="sm"
+        value={selectedProvider}
+        onChange={onProviderChange}
+        ariaLabel="Provider 筛选"
+        options={[
+          { value: '', label: '全部 Provider' },
+          ...providers.map((p) => ({ value: p, label: p })),
+        ]}
+      />
+
+      <Select
+        size="sm"
+        value={selectedStatusGroup}
+        onChange={onStatusGroupChange}
+        ariaLabel="状态筛选"
+        options={[
+          { value: 'all', label: '全部结果' },
+          { value: '2xx', label: '2xx 成功' },
+          { value: '4xx', label: '4xx 客户端异常' },
+          { value: '5xx', label: '5xx 服务端错误' },
+        ]}
+      />
+
+      <span className={styles.countText}>
+        共 <b>{totalCount}</b> 条记录
+      </span>
     </div>
   );
 }

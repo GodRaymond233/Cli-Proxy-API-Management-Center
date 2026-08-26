@@ -23,13 +23,18 @@
   stroke-width: 2px;
   stroke-linecap: round;
   stroke-linejoin: round;
-  stroke-dasharray: 1;
-  stroke-dashoffset: 0;
-  animation: wireDraw 1.3s cubic-bezier(0.25, 0.6, 0.35, 1) 0.55s backwards;
 }
 
+/* 擦除式描画：clip 矩形从左向右扫过，揭示整段曲线 */
+.wipeRect {
+  transform-box: fill-box;
+  transform-origin: left center;
+  animation: wireWipe 1.3s cubic-bezier(0.25, 0.6, 0.35, 1) 0.55s backwards;
+}
+
+/* 曲线描画完成后，面积再逐渐填满 */
 .area {
-  animation: wireFade 0.9s ease-out 1.25s backwards;
+  animation: wireFade 0.9s ease-out 1.7s backwards;
 }
 
 .idleLine {
@@ -53,12 +58,12 @@
   transition: top 400ms var(--ease-out-strong, ease-out);
 }
 
-@keyframes wireDraw {
+@keyframes wireWipe {
   from {
-    stroke-dashoffset: 1;
+    transform: scaleX(0);
   }
   to {
-    stroke-dashoffset: 0;
+    transform: scaleX(1);
   }
 }
 
@@ -86,7 +91,8 @@
 @media (prefers-reduced-motion: reduce) {
   .line,
   .area,
-  .pulse {
+  .pulse,
+  .wipeRect {
     animation: none;
   }
 

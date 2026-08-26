@@ -6,13 +6,13 @@ import styles from './UsageRequestDetailSheet.module.scss';
 
 interface UsageRequestDetailSheetProps {
   record: UsageRecord | null;
-  isOpen: boolean;
+  open: boolean;
   onClose: () => void;
 }
 
 export function UsageRequestDetailSheet({
   record,
-  isOpen,
+  open,
   onClose,
 }: UsageRequestDetailSheetProps) {
   if (!record) return null;
@@ -20,7 +20,7 @@ export function UsageRequestDetailSheet({
   const dateStr = new Date(record.timestamp).toLocaleString();
 
   return (
-    <Sheet open={isOpen} onClose={onClose} title="请求日志详情">
+    <Sheet open={open} onClose={onClose} title="请求日志详情">
       <div className={styles.content}>
         <div className={styles.section}>
           <div className={styles.sectionTitle}>基本信息</div>
@@ -50,6 +50,10 @@ export function UsageRequestDetailSheet({
             <div className={styles.field}>
               <span className={styles.label}>鉴权密钥</span>
               <span className={styles.val}>{record.keyName || '—'}</span>
+            </div>
+            <div className={styles.field}>
+              <span className={styles.label}>来源 IP</span>
+              <span className={styles.valMono}>{record.sourceIp || '—'}</span>
             </div>
           </div>
         </div>
@@ -98,6 +102,14 @@ export function UsageRequestDetailSheet({
             <div className={styles.tokenBox}>
               <span className={styles.tokenNum}>{record.usage.totalTokens.toLocaleString()}</span>
               <span className={styles.tokenLabel}>总 Token</span>
+            </div>
+            <div className={styles.tokenBox}>
+              <span className={`${styles.tokenNum} ${styles.hitRate}`}>
+                {record.usage.inputTokens > 0
+                  ? `${(((record.usage.cacheReadTokens ?? 0) / record.usage.inputTokens) * 100).toFixed(1)}%`
+                  : '—'}
+              </span>
+              <span className={styles.tokenLabel}>缓存命中率</span>
             </div>
           </div>
         </div>

@@ -1,15 +1,27 @@
+@use '../../../../styles/mixins' as *;
+
 .container {
   display: flex;
   flex-direction: column;
+  gap: $spacing-lg;
+
+  @include mobile {
+    gap: $spacing-md;
+  }
 }
 
 .chartsGrid {
   display: grid;
   grid-template-columns: 1fr 340px;
-  gap: 16px;
+  gap: $spacing-lg;
 
-  @media (max-width: 1024px) {
+  @include tablet {
     grid-template-columns: 1fr;
+  }
+
+  @include mobile {
+    grid-template-columns: 1fr;
+    gap: $spacing-md;
   }
 }
 

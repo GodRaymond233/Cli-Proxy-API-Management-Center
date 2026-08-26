@@ -1,20 +1,21 @@
+@use '../../../../styles/mixins' as *;
+
 .container {
   display: flex;
   flex-direction: column;
+  gap: $spacing-lg;
+
+  @include mobile {
+    gap: $spacing-md;
+  }
 }
 
-.topCard {
-  background: var(--bg-secondary, #ffffff);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg, 12px);
-  padding: 18px;
+.summaryBody {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 16px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.02);
+  gap: $spacing-md;
   flex-wrap: wrap;
-  gap: 16px;
 }
 
 .costInfo {
@@ -24,48 +25,71 @@
 }
 
 .costNum {
-  font-size: 26px;
+  font-size: 28px;
   font-weight: 700;
   color: var(--text-primary);
   line-height: 1.2;
-}
-
-.costSub {
-  font-size: 12px;
-  color: var(--text-tertiary, #888);
+  font-variant-numeric: tabular-nums;
 }
 
 .actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: $spacing-sm;
+  flex-wrap: wrap;
+
+  :global(.form-group) {
+    margin: 0;
+  }
 }
 
-.searchBox {
-  min-width: 180px;
+.searchWrapper {
+  width: 220px;
+
+  @include mobile {
+    width: 100%;
+  }
 }
 
 .searchInput {
-  width: 100%;
-  padding: 6px 12px;
-  font-size: 13px;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md, 8px);
-  background: var(--bg-primary, #ffffff);
-  color: var(--text-primary);
-  outline: none;
+  padding-right: 44px !important;
+}
 
-  &:focus {
-    border-color: #3b82f6;
+.searchIcon {
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
+
+.searchClear {
+  @include button-reset;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: $radius-full;
+  color: var(--text-secondary);
+
+  &:hover {
+    background: var(--bg-secondary);
+  }
+}
+
+.buttonContent {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+
+  svg {
+    flex: 0 0 auto;
   }
 }
 
 .tableWrapper {
-  background: var(--bg-secondary, #ffffff);
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg, 12px);
+  border-radius: $radius-md;
   overflow-x: auto;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.02);
+  background: var(--bg-secondary);
 }
 
 .table {
@@ -75,8 +99,7 @@
   font-size: 13px;
 
   th {
-    padding: 12px 14px;
-    background: var(--bg-tertiary, rgba(0, 0, 0, 0.02));
+    padding: 10px 14px;
     color: var(--text-secondary);
     font-weight: 600;
     font-size: 12px;
@@ -85,14 +108,22 @@
   }
 
   td {
-    padding: 12px 14px;
+    padding: 10px 14px;
     border-bottom: 1px solid var(--border-color);
     color: var(--text-primary);
     white-space: nowrap;
   }
 
-  tr:last-child td {
-    border-bottom: none;
+  tbody tr {
+    transition: background-color $transition-fast;
+
+    &:hover {
+      background: rgba($primary-color, 0.06);
+    }
+
+    &:last-child td {
+      border-bottom: none;
+    }
   }
 }
 
@@ -109,45 +140,58 @@
 
 .modelPat {
   font-size: 11px;
-  font-family: monospace;
-  color: var(--text-tertiary, #888);
+  font-family: $font-mono;
+  color: var(--text-tertiary);
 }
 
 .numCell {
-  font-family: monospace;
+  font-family: $font-mono;
   font-size: 12px;
   color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
 }
 
 .numCellHighlight {
-  font-family: monospace;
-  font-size: 13px;
+  font-family: $font-mono;
+  font-size: 12px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--viz-success);
+  font-variant-numeric: tabular-nums;
 }
 
 .priceCell {
-  font-family: monospace;
+  font-family: $font-mono;
   font-size: 12px;
   color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
 }
 
 .rowActions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
-.editBtn, .delBtn {
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  font-size: 14px;
-  padding: 4px;
-  border-radius: 4px;
-  transition: background 0.15s ease;
+.iconBtn {
+  @include button-reset;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: $radius-sm;
+  color: var(--text-secondary);
+  transition:
+    color $transition-fast,
+    background-color $transition-fast;
 
   &:hover {
-    background: var(--bg-tertiary, rgba(0, 0, 0, 0.06));
+    color: var(--text-primary);
+    background: var(--bg-tertiary);
+  }
+
+  &.danger:hover {
+    color: var(--viz-failure);
+    background: color-mix(in srgb, var(--viz-failure) 10%, transparent);
   }
 }

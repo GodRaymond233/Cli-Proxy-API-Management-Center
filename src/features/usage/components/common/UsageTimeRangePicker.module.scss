@@ -1,34 +1,35 @@
+@use '../../../../styles/mixins' as *;
+
 .container {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px;
-  background: var(--bg-tertiary, rgba(0, 0, 0, 0.04));
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md, 8px);
+  gap: 2px;
+  padding: 2px;
+  background: var(--bg-tertiary);
+  border-radius: $radius-md;
 }
 
 .button {
-  border: none;
-  background: transparent;
+  @include button-reset;
   padding: 5px 12px;
   font-size: 12px;
   font-weight: 500;
   color: var(--text-secondary);
-  border-radius: var(--radius-sm, 6px);
+  border-radius: $radius-sm;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition:
+    color $transition-fast,
+    background-color $transition-fast;
   white-space: nowrap;
 
   &:hover {
     color: var(--text-primary);
-    background: var(--bg-secondary);
   }
 
   &.active {
     color: var(--text-primary);
     background: var(--bg-primary);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    box-shadow: $shadow-sm;
     font-weight: 600;
   }
 }

@@ -3,6 +3,9 @@ import type { ModelPricingRule, UsageRecord } from '@/types/usage';
 import { usePricingStore } from '../../hooks/usePricingStore';
 import { ModelPricingModal } from './ModelPricingModal';
 import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
+import { Input } from '@/components/ui/Input';
+import { IconPencil, IconPlus, IconRefreshCw, IconSearch, IconTrash2, IconX } from '@/components/ui/icons';
 import { formatCompactNumber } from '@/utils/format';
 import styles from './UsagePricingTab.module.scss';
 
@@ -54,123 +57,143 @@ export function UsagePricingTab({ records }: UsagePricingTabProps) {
 
   return (
     <div className={styles.container}>
-      {/* Top Banner Cost Summary */}
-      <div className={styles.topCard}>
-        <div className={styles.costInfo}>
-          <div className={styles.costNum}>${totalCost.toFixed(3)}</div>
-          <div className={styles.costSub}>
-            已计价 {records.length} 次请求 · 可用 {allRules.length} 个模型价格
+      <Card title="成本总览" className={styles.summaryCard}>
+        <div className={styles.summaryBody} data-reveal>
+          <div className={styles.costInfo}>
+            <div className={styles.costNum}>${totalCost.toFixed(3)}</div>
+            <div className="hint">
+              已计价 {records.length} 次请求 · 可用 {allRules.length} 个模型价格
+            </div>
+          </div>
+
+          <div className={styles.actions}>
+            <div className={styles.searchWrapper}>
+              <Input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="搜索模型..."
+                className={styles.searchInput}
+                rightElement={
+                  searchQuery ? (
+                    <button
+                      type="button"
+                      className={styles.searchClear}
+                      onClick={() => setSearchQuery('')}
+                      title="清除"
+                      aria-label="清除"
+                    >
+                      <IconX size={16} />
+                    </button>
+                  ) : (
+                    <IconSearch size={16} className={styles.searchIcon} />
+                  )
+                }
+              />
+            </div>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => {
+                setEditingRule(null);
+                setModalOpen(true);
+              }}
+            >
+              <span className={styles.buttonContent}>
+                <IconPlus size={16} />
+                手动添加
+              </span>
+            </Button>
+            <Button size="sm" variant="primary" onClick={resetToDefaults}>
+              <span className={styles.buttonContent}>
+                <IconRefreshCw size={16} />
+                同步价格
+              </span>
+            </Button>
           </div>
         </div>
+      </Card>
 
-        <div className={styles.actions}>
-          <div className={styles.searchBox}>
-            <input
-              type="text"
-              placeholder="搜索模型..."
-              className={styles.searchInput}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={() => {
-              setEditingRule(null);
-              setModalOpen(true);
-            }}
-          >
-            手动添加
-          </Button>
-          <Button
-            size="sm"
-            variant="primary"
-            onClick={resetToDefaults}
-          >
-            同步价格
-          </Button>
-        </div>
-      </div>
+      <Card title="模型定价规则" className={styles.rulesCard}>
+        <div className={styles.tableWrapper} data-reveal>
+          <table className={styles.table}>
+            <thead>
+              <tr>
+                <th>模型</th>
+                <th>请求数</th>
+                <th>Token</th>
+                <th>预估成本</th>
+                <th>输入价 ($/1M)</th>
+                <th>输出价 ($/1M)</th>
+                <th>缓存读取 ($/1M)</th>
+                <th>缓存创建 ($/1M)</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredRules.map((rule) => {
+                const stats = modelStatsMap.get(rule.displayName) || modelStatsMap.get(rule.modelPattern);
+                const reqCount = stats ? stats.requests : 0;
+                const tokenCount = stats ? stats.tokens : 0;
+                const cost = stats ? stats.cost : 0;
 
-      {/* Rules Table */}
-      <div className={styles.tableWrapper}>
-        <table className={styles.table}>
-          <thead>
-            <tr>
-              <th>模型</th>
-              <th>请求数</th>
-              <th>Token</th>
-              <th>预估成本</th>
-              <th>输入价 ($/1M)</th>
-              <th>输出价 ($/1M)</th>
-              <th>缓存读取 ($/1M)</th>
-              <th>缓存创建 ($/1M)</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredRules.map((rule) => {
-              const stats = modelStatsMap.get(rule.displayName) || modelStatsMap.get(rule.modelPattern);
-              const reqCount = stats ? stats.requests : 0;
-              const tokenCount = stats ? stats.tokens : 0;
-              const cost = stats ? stats.cost : 0;
-
-              return (
-                <tr key={rule.modelPattern}>
-                  <td>
-                    <div className={styles.modelNameCell}>
-                      <span className={styles.modelName}>{rule.displayName || rule.modelPattern}</span>
-                      <span className={styles.modelPat}>{rule.modelPattern}</span>
-                    </div>
-                  </td>
-                  <td className={styles.numCell}>{reqCount > 0 ? reqCount.toLocaleString() : '—'}</td>
-                  <td className={styles.numCell}>{tokenCount > 0 ? formatCompactNumber(tokenCount) : '—'}</td>
-                  <td className={styles.numCellHighlight}>
-                    {cost > 0 ? `$${cost.toFixed(3)}` : reqCount > 0 ? '$0.00' : '—'}
-                  </td>
-                  <td className={styles.priceCell}>${rule.inputPricePerMillion.toFixed(4)}</td>
-                  <td className={styles.priceCell}>${rule.outputPricePerMillion.toFixed(4)}</td>
-                  <td className={styles.priceCell}>
-                    ${(rule.cacheReadPricePerMillion ?? rule.inputPricePerMillion * 0.1).toFixed(4)}
-                  </td>
-                  <td className={styles.priceCell}>
-                    ${(rule.cacheWritePricePerMillion ?? rule.inputPricePerMillion * 1.25).toFixed(4)}
-                  </td>
-                  <td>
-                    <div className={styles.rowActions}>
-                      <button
-                        type="button"
-                        className={styles.editBtn}
-                        onClick={() => {
-                          setEditingRule(rule);
-                          setModalOpen(true);
-                        }}
-                        title="编辑"
-                      >
-                        ✏️
-                      </button>
-                      {rule.isCustom && (
+                return (
+                  <tr key={rule.modelPattern}>
+                    <td>
+                      <div className={styles.modelNameCell}>
+                        <span className={styles.modelName}>{rule.displayName || rule.modelPattern}</span>
+                        <span className={styles.modelPat}>{rule.modelPattern}</span>
+                      </div>
+                    </td>
+                    <td className={styles.numCell}>{reqCount > 0 ? reqCount.toLocaleString() : '—'}</td>
+                    <td className={styles.numCell}>{tokenCount > 0 ? formatCompactNumber(tokenCount) : '—'}</td>
+                    <td className={styles.numCellHighlight}>
+                      {cost > 0 ? `$${cost.toFixed(3)}` : reqCount > 0 ? '$0.00' : '—'}
+                    </td>
+                    <td className={styles.priceCell}>${rule.inputPricePerMillion.toFixed(4)}</td>
+                    <td className={styles.priceCell}>${rule.outputPricePerMillion.toFixed(4)}</td>
+                    <td className={styles.priceCell}>
+                      ${(rule.cacheReadPricePerMillion ?? rule.inputPricePerMillion * 0.1).toFixed(4)}
+                    </td>
+                    <td className={styles.priceCell}>
+                      ${(rule.cacheWritePricePerMillion ?? rule.inputPricePerMillion * 1.25).toFixed(4)}
+                    </td>
+                    <td>
+                      <div className={styles.rowActions}>
                         <button
                           type="button"
-                          className={styles.delBtn}
-                          onClick={() => deleteRule(rule.modelPattern)}
-                          title="删除自定义规则"
+                          className={styles.iconBtn}
+                          onClick={() => {
+                            setEditingRule(rule);
+                            setModalOpen(true);
+                          }}
+                          title="编辑"
+                          aria-label="编辑"
                         >
-                          🗑️
+                          <IconPencil size={15} />
                         </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+                        {rule.isCustom && (
+                          <button
+                            type="button"
+                            className={`${styles.iconBtn} ${styles.danger}`}
+                            onClick={() => deleteRule(rule.modelPattern)}
+                            title="删除自定义规则"
+                            aria-label="删除自定义规则"
+                          >
+                            <IconTrash2 size={15} />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </Card>
 
       <ModelPricingModal
-        isOpen={modalOpen}
+        open={modalOpen}
         onClose={() => setModalOpen(false)}
         initialRule={editingRule}
         onSave={addRule}

@@ -1,4 +1,5 @@
 import type { HourlyDistributionItem } from '@/types/usage';
+import { Card } from '@/components/ui/Card';
 import styles from './HourlyDistributionCard.module.scss';
 
 interface HourlyDistributionCardProps {
@@ -9,23 +10,18 @@ export function HourlyDistributionCard({ distribution }: HourlyDistributionCardP
   const maxReq = Math.max(1, ...distribution.map((d) => d.requestCount));
 
   return (
-    <div className={styles.card}>
-      <div className={styles.header}>
-        <div>
-          <h3 className={styles.title}>时段分布</h3>
-          <span className={styles.subtitle}>24 小时活跃时段分布与热度</span>
-        </div>
-      </div>
+    <Card title="时段分布" className={styles.card}>
+      <div className="hint">24 小时活跃时段分布与热度</div>
 
       <div className={styles.chart}>
-        {distribution.map((d) => {
+        {distribution.map((d, idx) => {
           const heightPct = Math.round((d.requestCount / maxReq) * 100);
           return (
             <div key={d.hour} className={styles.col} title={`${d.label}: ${d.requestCount} 次 (${d.percentage}%)`}>
               <div className={styles.barWrapper}>
                 <div
                   className={styles.bar}
-                  style={{ height: `${Math.max(4, heightPct)}%` }}
+                  style={{ height: `${Math.max(4, heightPct)}%`, animationDelay: `${idx * 24}ms` }}
                 />
               </div>
               <span className={styles.label}>{d.hour % 3 === 0 ? `${d.hour}h` : ''}</span>
@@ -33,6 +29,6 @@ export function HourlyDistributionCard({ distribution }: HourlyDistributionCardP
           );
         })}
       </div>
-    </div>
+    </Card>
   );
 }

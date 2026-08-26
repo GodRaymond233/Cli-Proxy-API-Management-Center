@@ -1,5 +1,6 @@
 import type { RankItem } from '@/types/usage';
 import { formatCompactNumber } from '@/utils/format';
+import { Card } from '@/components/ui/Card';
 import styles from './AnalyticsRankCard.module.scss';
 
 interface AnalyticsRankCardProps {
@@ -18,11 +19,8 @@ export function AnalyticsRankCard({
   const displayItems = items.slice(0, maxDisplay);
 
   return (
-    <div className={styles.card}>
-      <div className={styles.header}>
-        <h3 className={styles.title}>{title}</h3>
-        {subtitle && <span className={styles.subtitle}>{subtitle}</span>}
-      </div>
+    <Card title={title} className={styles.card}>
+      <div className="hint">{subtitle}</div>
 
       <div className={styles.list}>
         {displayItems.length === 0 ? (
@@ -40,7 +38,7 @@ export function AnalyticsRankCard({
                   </span>
                 </div>
                 <div className={styles.itemStats}>
-                  <span className={styles.reqCount}>{item.count} requests</span>
+                  <span className={styles.reqCount}>{item.count} 次</span>
                   <span className={styles.pct}>{item.percentage}%</span>
                   <span className={styles.tokenVal}>{formatCompactNumber(item.tokens)} Token</span>
                 </div>
@@ -55,6 +53,6 @@ export function AnalyticsRankCard({
           ))
         )}
       </div>
-    </div>
+    </Card>
   );
 }
