@@ -1,14 +1,26 @@
+@use '../../../../styles/mixins' as *;
+
+.card {
+  min-width: 0;
+}
+
+.recordCount {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
 .container {
   display: flex;
   flex-direction: column;
+  gap: $spacing-md;
 }
 
 .tableWrapper {
-  background: var(--bg-secondary, #ffffff);
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg, 12px);
+  border-radius: $radius-md;
   overflow-x: auto;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.02);
+  background: var(--bg-secondary);
 }
 
 .table {
@@ -18,8 +30,7 @@
   font-size: 13px;
 
   th {
-    padding: 12px 14px;
-    background: var(--bg-tertiary, rgba(0, 0, 0, 0.02));
+    padding: 10px 14px;
     color: var(--text-secondary);
     font-weight: 600;
     font-size: 12px;
@@ -37,10 +48,10 @@
 
 .row {
   cursor: pointer;
-  transition: background 0.12s ease;
+  transition: background-color $transition-fast;
 
   &:hover {
-    background: var(--bg-tertiary, rgba(0, 0, 0, 0.03));
+    background: rgba($primary-color, 0.06);
   }
 
   &:last-child td {
@@ -49,7 +60,7 @@
 }
 
 .timeCell {
-  font-family: monospace;
+  font-family: $font-mono;
   font-size: 12px;
   color: var(--text-secondary);
 }
@@ -67,57 +78,84 @@
 
 .modelSub {
   font-size: 11px;
-  color: var(--text-tertiary, #888);
+  color: var(--text-tertiary);
 }
 
 .providerBadge {
   display: inline-block;
   padding: 2px 8px;
-  border-radius: 4px;
-  background: var(--bg-tertiary, rgba(0, 0, 0, 0.06));
+  border-radius: $radius-sm;
+  background: var(--bg-tertiary);
   font-size: 12px;
   font-weight: 500;
 }
 
-.sourceTag {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 4px;
-  background: rgba(59, 130, 246, 0.08);
-  color: #3b82f6;
+.monoCell {
+  font-family: $font-mono;
   font-size: 12px;
-  font-weight: 500;
+  color: var(--text-secondary);
 }
 
-.keyCell {
+.ioCell {
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 
-.keyTag {
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--text-secondary);
-}
-
-.keySub {
-  font-size: 11px;
-  font-family: monospace;
-  color: var(--text-tertiary, #888);
-}
-
-.numCell {
-  font-family: monospace;
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.numCellBold {
-  font-family: monospace;
+.ioNums {
+  font-family: $font-mono;
   font-size: 12px;
   font-weight: 600;
   color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.ioCache {
+  font-family: $font-mono;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.cacheHitRate {
+  font-family: $font-mono;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--viz-success);
+  font-variant-numeric: tabular-nums;
+}
+
+.costPill {
+  display: inline-block;
+  padding: 2px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: $radius-sm;
+  background: var(--bg-primary);
+  font-family: $font-mono;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.latencyCell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.latencyNum {
+  font-family: $font-mono;
+  font-size: 12px;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.latencySub {
+  font-family: $font-mono;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
 }
 
 .statusCell {
@@ -131,13 +169,15 @@
   height: 7px;
   border-radius: 50%;
 
-  &.ok { background: #10b981; }
-  &.err { background: #ef4444; }
+  &.ok { background: var(--viz-success); }
+  &.err { background: var(--viz-failure); }
 }
 
-.protoText {
-  font-size: 11px;
-  color: var(--text-tertiary, #888);
+.statusCode {
+  font-family: $font-mono;
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
 }
 
 .pagination {
@@ -145,16 +185,16 @@
   align-items: center;
   justify-content: flex-end;
   gap: 12px;
-  margin-top: 14px;
 }
 
 .pageInfo {
   font-size: 13px;
   color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
 }
 
 .empty {
   text-align: center;
   padding: 32px 0;
-  color: var(--text-tertiary, #888);
+  color: var(--text-tertiary);
 }

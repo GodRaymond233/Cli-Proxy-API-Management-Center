@@ -20,6 +20,7 @@ interface LiveWireProps {
  */
 export function LiveWire({ points, ariaLabel, className }: LiveWireProps) {
   const gradientId = useId();
+  const wipeClipId = useId();
 
   const geometry = useMemo(() => {
     const values = points.filter((value) => Number.isFinite(value));
@@ -79,15 +80,29 @@ export function LiveWire({ points, ariaLabel, className }: LiveWireProps) {
                 <stop offset="0%" stopColor="var(--wire-color)" stopOpacity="0.2" />
                 <stop offset="100%" stopColor="var(--wire-color)" stopOpacity="0" />
               </linearGradient>
+              {/*
+                non-scaling-stroke 下 Chrome 忽略 pathLength，dasharray 描画不可用；
+                改用 clipPath 矩形左→右擦除揭示，视觉等价于描画曲线
+              */}
+              <clipPath id={wipeClipId}>
+                <rect
+                  className={styles.wipeRect}
+                  x={0}
+                  y={-2}
+                  width={VIEW_WIDTH}
+                  height={VIEW_HEIGHT + 4}
+                />
+              </clipPath>
             </defs>
             <path className={styles.area} d={geometry.area} fill={`url(#${gradientId})`} />
-            <path
-              className={styles.line}
-              d={geometry.line}
-              pathLength={1}
-              fill="none"
-              vectorEffect="non-scaling-stroke"
-            />
+            <g clipPath={`url(#${wipeClipId})`}>
+              <path
+                className={styles.line}
+                d={geometry.line}
+                fill="none"
+                vectorEffect="non-scaling-stroke"
+              />
+            </g>
           </svg>
           <span
             className={styles.pulse}

@@ -1,15 +1,24 @@
-import { useMemo, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { HourlyTrendBucket } from '@/types/usage';
 import { formatCompactNumber } from '@/utils/format';
 import { buildSmoothLinePath } from '@/features/dashboard/components/curve';
+import { Card } from '@/components/ui/Card';
 import styles from './UsageTrendChart.module.scss';
 
 interface UsageTrendChartProps {
   trends: HourlyTrendBucket[];
 }
 
+type MetricMode = 'requests' | 'tokens' | 'cost';
+
+const METRIC_TOGGLES: { key: MetricMode; label: string }[] = [
+  { key: 'requests', label: '请求数' },
+  { key: 'tokens', label: 'Token 消耗' },
+  { key: 'cost', label: '预估费用' },
+];
+
 export function UsageTrendChart({ trends }: UsageTrendChartProps) {
-  const [metricMode, setMetricMode] = useState<'requests' | 'tokens' | 'cost'>('requests');
+  const [metricMode, setMetricMode] = useState<MetricMode>('requests');
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
 
   const values = useMemo(() => {
@@ -22,7 +31,23 @@ export function UsageTrendChart({ trends }: UsageTrendChartProps) {
 
   const maxVal = useMemo(() => Math.max(1, ...values), [values]);
 
-  const width = 800;
+  // viewBox 必须与容器实际像素 1:1：固定 800 宽 + 默认 meet 缩放会让画面居中 letterbox，
+  // 曲线/网格与满宽分布的横轴标签永远对不齐（圆点也会被拉伸成椭圆）
+  const chartWrapperRef = useRef<HTMLDivElement>(null);
+  const [chartWidth, setChartWidth] = useState(800);
+
+  useLayoutEffect(() => {
+    const element = chartWrapperRef.current;
+    if (!element) return;
+    const observer = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width ?? 0;
+      if (w > 0) setChartWidth(Math.round(w));
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  const width = chartWidth;
   const height = 220;
   const paddingX = 20;
   const paddingY = 20;
@@ -51,39 +76,26 @@ export function UsageTrendChart({ trends }: UsageTrendChartProps) {
 
   const activeBucket = hoverIndex !== null ? trends[hoverIndex] : null;
 
-  return (
-    <div className={styles.container}>
-      <div className={styles.header}>
-        <div>
-          <h3 className={styles.title}>请求与 Token 趋势</h3>
-          <span className={styles.subtitle}>按系统本地小时聚合</span>
-        </div>
-        <div className={styles.toggles}>
-          <button
-            type="button"
-            className={`${styles.toggleBtn} ${metricMode === 'requests' ? styles.active : ''}`}
-            onClick={() => setMetricMode('requests')}
-          >
-            请求数
-          </button>
-          <button
-            type="button"
-            className={`${styles.toggleBtn} ${metricMode === 'tokens' ? styles.active : ''}`}
-            onClick={() => setMetricMode('tokens')}
-          >
-            Token 消耗
-          </button>
-          <button
-            type="button"
-            className={`${styles.toggleBtn} ${metricMode === 'cost' ? styles.active : ''}`}
-            onClick={() => setMetricMode('cost')}
-          >
-            预估费用
-          </button>
-        </div>
-      </div>
+  const toggles = (
+    <div className={styles.toggles}>
+      {METRIC_TOGGLES.map((item) => (
+        <button
+          key={item.key}
+          type="button"
+          className={`${styles.toggleBtn} ${metricMode === item.key ? styles.active : ''}`}
+          onClick={() => setMetricMode(item.key)}
+        >
+          {item.label}
+        </button>
+      ))}
+    </div>
+  );
 
-      <div className={styles.chartWrapper}>
+  return (
+    <Card title="请求与 Token 趋势" extra={toggles} className={styles.card}>
+      <div className="hint">按系统本地小时聚合</div>
+
+      <div className={styles.chartWrapper} ref={chartWrapperRef}>
         <svg
           viewBox={`0 0 ${width} ${height}`}
           className={styles.svg}
@@ -91,8 +103,8 @@ export function UsageTrendChart({ trends }: UsageTrendChartProps) {
         >
           <defs>
             <linearGradient id="usageTrendGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.35" />
-              <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.0" />
+              <stop offset="0%" stopColor="var(--wire-color)" stopOpacity="0.22" />
+              <stop offset="100%" stopColor="var(--wire-color)" stopOpacity="0" />
             </linearGradient>
           </defs>
 
@@ -101,16 +113,24 @@ export function UsageTrendChart({ trends }: UsageTrendChartProps) {
           <line x1={paddingX} y1={height / 2} x2={width - paddingX} y2={height / 2} stroke="var(--border-color)" strokeDasharray="3 3" />
           <line x1={paddingX} y1={height - paddingY} x2={width - paddingX} y2={height - paddingY} stroke="var(--border-color)" />
 
-          {/* Area & Line */}
-          {areaPath && <path d={areaPath} fill="url(#usageTrendGrad)" />}
-          {linePath && <path d={linePath} fill="none" stroke="#3b82f6" strokeWidth="2.5" strokeLinecap="round" />}
+          {/* Area & Line（key 随指标切换，重放描画动效） */}
+          {areaPath && <path key={`area-${metricMode}`} d={areaPath} fill="url(#usageTrendGrad)" className={styles.areaPath} />}
+          {linePath && (
+            <path
+              key={`line-${metricMode}`}
+              d={linePath}
+              fill="none"
+              pathLength={1}
+              className={styles.linePath}
+            />
+          )}
 
           {/* Interaction Points */}
           {points.map((pt, idx) => (
             <g key={idx} onMouseEnter={() => setHoverIndex(idx)}>
               <circle cx={pt.x} cy={pt.y} r="10" fill="transparent" className={styles.hitArea} />
               {(hoverIndex === idx || idx === points.length - 1) && (
-                <circle cx={pt.x} cy={pt.y} r="4.5" fill="#3b82f6" stroke="#ffffff" strokeWidth="2" />
+                <circle cx={pt.x} cy={pt.y} r="4.5" className={styles.pointDot} />
               )}
             </g>
           ))}
@@ -127,13 +147,13 @@ export function UsageTrendChart({ trends }: UsageTrendChartProps) {
           >
             <div className={styles.tooltipTime}>{activeBucket.hourLabel}</div>
             <div className={styles.tooltipRow}>
-              <span>请求数:</span> <b>{activeBucket.requestCount.toLocaleString()}</b>
+              <span>请求数</span> <b>{activeBucket.requestCount.toLocaleString()}</b>
             </div>
             <div className={styles.tooltipRow}>
-              <span>Token:</span> <b>{formatCompactNumber(activeBucket.totalTokens)}</b>
+              <span>Token</span> <b>{formatCompactNumber(activeBucket.totalTokens)}</b>
             </div>
             <div className={styles.tooltipRow}>
-              <span>预估费用:</span> <b>${activeBucket.estimatedCostUsd.toFixed(4)}</b>
+              <span>预估费用</span> <b>${activeBucket.estimatedCostUsd.toFixed(4)}</b>
             </div>
           </div>
         )}
@@ -144,6 +164,6 @@ export function UsageTrendChart({ trends }: UsageTrendChartProps) {
         <span>{trends[Math.floor(trends.length / 2)]?.hourLabel || ''}</span>
         <span>{trends[trends.length - 1]?.hourLabel || '—'}</span>
       </div>
-    </div>
+    </Card>
   );
 }

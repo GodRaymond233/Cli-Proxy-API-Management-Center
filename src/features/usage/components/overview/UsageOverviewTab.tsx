@@ -15,10 +15,10 @@ export function UsageOverviewTab({ kpi, trends }: UsageOverviewTabProps) {
       <UsageKpiGrid kpi={kpi} />
 
       <div className={styles.chartsGrid}>
-        <div className={styles.trendCol}>
+        <div className={styles.trendCol} data-reveal>
           <UsageTrendChart trends={trends} />
         </div>
-        <div className={styles.tokenCol}>
+        <div className={styles.tokenCol} data-reveal>
           <TokenCompositionCard kpi={kpi} />
         </div>
       </div>

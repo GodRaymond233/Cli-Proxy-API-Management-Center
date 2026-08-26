@@ -6,14 +6,14 @@ import { Input } from '@/components/ui/Input';
 import styles from './ModelPricingModal.module.scss';
 
 interface ModelPricingModalProps {
-  isOpen: boolean;
+  open: boolean;
   onClose: () => void;
   initialRule?: ModelPricingRule | null;
   onSave: (rule: Omit<ModelPricingRule, 'isCustom' | 'updatedAt'>) => void;
 }
 
 export function ModelPricingModal({
-  isOpen,
+  open,
   onClose,
   initialRule,
   onSave,
@@ -47,7 +47,7 @@ export function ModelPricingModal({
       setCacheReadPrice('1.25');
       setCacheWritePrice('2.5');
     }
-  }, [initialRule, isOpen]);
+  }, [initialRule, open]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -68,7 +68,7 @@ export function ModelPricingModal({
 
   return (
     <Modal
-      open={isOpen}
+      open={open}
       onClose={onClose}
       title={initialRule ? '编辑模型定价' : '添加自定义模型定价'}
     >
