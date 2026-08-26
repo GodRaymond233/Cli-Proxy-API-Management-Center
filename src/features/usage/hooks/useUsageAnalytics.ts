@@ -81,7 +81,9 @@ export function useUsageAnalytics(records: UsageRecord[], rangeStartTime?: numbe
     const avgLatencyMs = totalRequests > 0 ? Math.round(totalLatency / totalRequests) : 0;
 
     // Time window calculation for TPS and RPM
+    // eslint-disable-next-line react-hooks/purity -- 空记录时以计算时刻为回退
     const earliestTime = records[records.length - 1]?.timestamp ?? Date.now();
+    // eslint-disable-next-line react-hooks/purity -- 空记录时以计算时刻为回退
     const latestTime = records[0]?.timestamp ?? Date.now();
     const timeSpanSeconds = Math.max(60, (latestTime - earliestTime) / 1000);
     const timeSpanMinutes = timeSpanSeconds / 60;
