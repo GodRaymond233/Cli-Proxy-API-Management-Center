@@ -4,7 +4,28 @@ import { RequestFiltersBar } from './RequestFiltersBar';
 import { UsageRequestDetailSheet } from './UsageRequestDetailSheet';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { maskInstanceLabel } from '../../collector/logCollector';
 import styles from './UsageRequestsTab.module.scss';
+
+const EFFORT_RANK: Record<string, number> = {
+  minimal: 0,
+  low: 1,
+  medium: 2,
+  high: 3,
+  xhigh: 4,
+  'extra-high': 4,
+  max: 5,
+};
+
+const effortClass = (effort: string): string => {
+  const rank = EFFORT_RANK[effort.toLowerCase()] ?? -1;
+  if (rank < 0) return styles.effortChip;
+  if (rank <= 1) return `${styles.effortChip} ${styles.effortLow}`;
+  if (rank === 2) return `${styles.effortChip} ${styles.effortMedium}`;
+  if (rank === 3) return `${styles.effortChip} ${styles.effortHigh}`;
+  if (rank === 4) return `${styles.effortChip} ${styles.effortXhigh}`;
+  return `${styles.effortChip} ${styles.effortMax}`;
+};
 
 interface UsageRequestsTabProps {
   records: UsageRecord[];
@@ -52,7 +73,22 @@ export function UsageRequestsTab({ records }: UsageRequestsTabProps) {
         const matchModel = r.model?.toLowerCase().includes(q);
         const matchKey = r.keyName?.toLowerCase().includes(q);
         const matchIp = r.sourceIp?.toLowerCase().includes(q);
-        if (!matchId && !matchModel && !matchKey && !matchIp) return false;
+        const matchAlias = r.modelAlias?.toLowerCase().includes(q);
+        const matchRequested = r.requestedModel?.toLowerCase().includes(q);
+        const matchInstance = r.providerInstanceLabel?.toLowerCase().includes(q);
+        const matchInstanceId = r.providerInstanceId?.toLowerCase().includes(q);
+        if (
+          !matchId &&
+          !matchModel &&
+          !matchKey &&
+          !matchIp &&
+          !matchAlias &&
+          !matchRequested &&
+          !matchInstance &&
+          !matchInstanceId
+        ) {
+          return false;
+        }
       }
       return true;
     });
@@ -139,12 +175,45 @@ export function UsageRequestsTab({ records }: UsageRequestsTabProps) {
                       <td className={styles.timeCell}>{timeStr}</td>
                       <td>
                         <div className={styles.modelCell}>
-                          <span className={styles.modelName}>{r.normalizedModel || r.model}</span>
-                          <span className={styles.modelSub}>{r.model}</span>
+                          <span className={styles.modelMainRow}>
+                            <span className={styles.modelName}>
+                              {r.modelAlias || r.model}
+                            </span>
+                            {r.reasoningEffort && (
+                              <span className={effortClass(r.reasoningEffort)}>
+                                {r.reasoningEffort}
+                              </span>
+                            )}
+                          </span>
+                          <span className={styles.modelSub}>
+                            {r.requestedModel && r.requestedModel !== r.model
+                              ? `${r.requestedModel} → ${r.model}`
+                              : r.model}
+                          </span>
                         </div>
                       </td>
                       <td>
-                        <span className={styles.providerBadge}>{r.provider}</span>
+                        <div className={styles.modelCell}>
+                          <span className={styles.modelMainRow}>
+                            {r.providerAuthType === 'oauth' && (
+                              <span className={`${styles.effortChip} ${styles.authChip}`}>
+                                OAuth
+                              </span>
+                            )}
+                            <span
+                              className={styles.modelName}
+                              title={r.providerInstanceUrl || undefined}
+                            >
+                              {r.providerInstanceUrl ||
+                                maskInstanceLabel(
+                                  r.providerInstanceLabel,
+                                  r.providerAuthType
+                                ) ||
+                                '—'}
+                            </span>
+                          </span>
+                          <span className={styles.providerBadge}>{r.provider}</span>
+                        </div>
                       </td>
                       <td>
                         <span className={styles.monoCell}>{r.keyName || '—'}</span>
