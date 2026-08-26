@@ -76,6 +76,57 @@
   color: var(--text-primary);
 }
 
+.modelMainRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* 推力强度徽章：中性→绿→金→琥珀→红，与强度条/额度的语义色语言一致 */
+.effortChip {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: $radius-sm;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: 0;
+  background: var(--bg-tertiary);
+  color: var(--text-tertiary);
+}
+
+.effortLow {
+  color: var(--text-secondary);
+}
+
+.effortMedium {
+  background: color-mix(in srgb, var(--success-color) 14%, transparent);
+  color: var(--success-color);
+}
+
+.effortHigh {
+  background: color-mix(in srgb, var(--quota-medium-color) 16%, transparent);
+  color: var(--quota-medium-color);
+}
+
+.effortXhigh {
+  background: color-mix(in srgb, var(--amber-color) 16%, transparent);
+  color: var(--amber-color);
+}
+
+.effortMax {
+  background: color-mix(in srgb, var(--error-color) 14%, transparent);
+  color: var(--error-color);
+}
+
+/* OAuth 实例徽章：与推力徽章同款方框形态，绿色以示官方订阅身份 */
+.authChip {
+  background: color-mix(in srgb, var(--success-color) 14%, transparent);
+  color: var(--success-color);
+  text-transform: uppercase;
+}
+
 .modelSub {
   font-size: 11px;
   color: var(--text-tertiary);

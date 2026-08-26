@@ -2,6 +2,7 @@ import type { UsageRecord } from '@/types/usage';
 import { Sheet } from '@/components/ui/Sheet';
 import { Button } from '@/components/ui/Button';
 import { copyToClipboard } from '@/utils/clipboard';
+import { maskInstanceLabel } from '../../collector/logCollector';
 import styles from './UsageRequestDetailSheet.module.scss';
 
 interface UsageRequestDetailSheetProps {
@@ -62,16 +63,48 @@ export function UsageRequestDetailSheet({
           <div className={styles.sectionTitle}>模型与供应商</div>
           <div className={styles.grid}>
             <div className={styles.field}>
-              <span className={styles.label}>实际调用模型</span>
+              <span className={styles.label}>上游模型</span>
               <span className={styles.valMono}>{record.model}</span>
             </div>
             <div className={styles.field}>
-              <span className={styles.label}>归一化模型</span>
+              <span className={styles.label}>请求模型</span>
+              <span className={styles.valMono}>{record.requestedModel || '—'}</span>
+            </div>
+            <div className={styles.field}>
+              <span className={styles.label}>模型 Alias</span>
+              <span className={styles.valMono}>{record.modelAlias || '—'}</span>
+            </div>
+            <div className={styles.field}>
+              <span className={styles.label}>推力强度</span>
+              <span className={styles.valMono}>{record.reasoningEffort || '—'}</span>
+            </div>
+            <div className={styles.field}>
+              <span className={styles.label}>定价显示名</span>
               <span className={styles.val}>{record.normalizedModel}</span>
             </div>
             <div className={styles.field}>
-              <span className={styles.label}>Provider</span>
+              <span className={styles.label}>Provider 类型</span>
               <span className={styles.val}>{record.provider}</span>
+            </div>
+            <div className={styles.field}>
+              <span className={styles.label}>认证方式</span>
+              <span className={styles.valMono}>{record.providerAuthType || '—'}</span>
+            </div>
+            <div className={styles.field}>
+              <span className={styles.label}>Provider 实例</span>
+              <span className={styles.valMono}>
+                {record.providerInstanceUrl ||
+                  maskInstanceLabel(record.providerInstanceLabel, record.providerAuthType) ||
+                  '旧记录无路由信息'}
+              </span>
+            </div>
+            <div className={styles.field}>
+              <span className={styles.label}>实例 URL</span>
+              <span className={styles.valMono}>{record.providerInstanceUrl || '—'}</span>
+            </div>
+            <div className={styles.field}>
+              <span className={styles.label}>实例 ID</span>
+              <span className={styles.valMono}>{record.providerInstanceId || '—'}</span>
             </div>
             <div className={styles.field}>
               <span className={styles.label}>预估费用</span>
@@ -124,7 +157,21 @@ export function UsageRequestDetailSheet({
         <div className={styles.footer}>
           <Button
             variant="secondary"
-            onClick={() => copyToClipboard(JSON.stringify(record, null, 2))}
+            onClick={() =>
+              copyToClipboard(
+                JSON.stringify(
+                  {
+                    ...record,
+                    providerInstanceLabel: maskInstanceLabel(
+                      record.providerInstanceLabel,
+                      record.providerAuthType
+                    ),
+                  },
+                  null,
+                  2
+                )
+              )
+            }
           >
             复制完整 JSON
           </Button>

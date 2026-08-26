@@ -70,6 +70,9 @@ export const logsApi = {
 
   clearLogs: () => apiClient.delete('/logs'),
 
+  fetchUsageQueue: (count: number): Promise<unknown[]> =>
+    apiClient.get('/usage-queue', { params: { count }, timeout: LOGS_TIMEOUT_MS }),
+
   fetchErrorLogs: (): Promise<ErrorLogsResponse> =>
     apiClient.get('/request-error-logs', { timeout: LOGS_TIMEOUT_MS }),
 

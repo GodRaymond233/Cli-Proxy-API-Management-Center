@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import type { UsageTimeRange, UsageFilterParams } from '@/types/usage';
 import { useUsageRecords } from './hooks/useUsageRecords';
 import { useUsageAnalytics } from './hooks/useUsageAnalytics';
@@ -13,12 +13,36 @@ import { IconRefreshCw, IconTimer, IconTrash2 } from '@/components/ui/icons';
 import { useHeaderRefresh } from '@/hooks/useHeaderRefresh';
 import { useRevealGroup } from '@/hooks/motion';
 import { logsApi } from '@/services/api/logs';
-import { parseUsageRecordFromLog } from './collector/logCollector';
+import { apiClient } from '@/services/api/client';
+import {
+  parseUsageQueueRecord,
+  buildProviderInstanceIndex,
+  type ProviderInstanceIndex,
+} from './collector/logCollector';
 import { usageStorage } from './storage/usageStorage';
 import { usePricingStore } from './hooks/usePricingStore';
 import styles from './UsagePage.module.scss';
 
 type ActiveTab = 'overview' | 'analytics' | 'requests' | 'pricing';
+
+// auth_index / api-key → { name, baseUrl }：把 api-key 实例显示为中转 URL 而非密钥。
+// 60s 缓存，避免随 15s 采集周期反复请求配置。
+const PROVIDER_INDEX_TTL_MS = 60_000;
+let providerIndexCache: { at: number; index: ProviderInstanceIndex } | null = null;
+
+async function getProviderIndex(): Promise<ProviderInstanceIndex> {
+  if (providerIndexCache && Date.now() - providerIndexCache.at < PROVIDER_INDEX_TTL_MS) {
+    return providerIndexCache.index;
+  }
+  let index: ProviderInstanceIndex = new Map();
+  try {
+    index = buildProviderInstanceIndex(await apiClient.get('/config'));
+  } catch {
+    // 配置不可用时退化为遮蔽形态，不阻塞采集
+  }
+  providerIndexCache = { at: Date.now(), index };
+  return index;
+}
 
 const TABS: { key: ActiveTab; label: string }[] = [
   { key: 'overview', label: '总览' },
@@ -31,12 +55,14 @@ export function UsagePage() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
   const [timeRange, setTimeRange] = useState<UsageTimeRange>('24h');
   const [autoRefresh, setAutoRefresh] = useState(false);
+  const refreshInFlightRef = useRef<Promise<void> | null>(null);
   const getAllRules = usePricingStore((state) => state.getAllRules);
 
   // 切换页签时重放入场级联（容器随 key 重挂载）
   const revealRef = useRevealGroup<HTMLDivElement>();
 
   const filterParams: UsageFilterParams = useMemo(() => {
+    // eslint-disable-next-line react-hooks/purity -- 时间窗口需要以计算时刻为准
     const now = Date.now();
     let startTime: number | undefined;
     if (timeRange === 'today') {
@@ -55,44 +81,58 @@ export function UsagePage() {
       timeRange: {
         range: timeRange,
         startTime,
-        endTime: now,
+        // endTime 留空：窗口在查询时评估，否则挂载时刻之后完成的请求永远落在范围外
       },
     };
   }, [timeRange]);
 
-  const { records, totalCount, refetch, clearRecords, loadSampleData } = useUsageRecords(
+  const { records, totalCount, refetch, clearRecords } = useUsageRecords(
     filterParams,
     autoRefresh
   );
   const analytics = useUsageAnalytics(records, filterParams.timeRange.startTime);
 
-  useHeaderRefresh(() => refetch());
+  // Usage queue collector: pops finished-request usage records from CPA
+  const collectUsageQueue = useCallback(async () => {
+    try {
+      const [raw, providerIndex] = await Promise.all([
+        logsApi.fetchUsageQueue(200),
+        getProviderIndex(),
+      ]);
+      if (!Array.isArray(raw) || raw.length === 0) return;
+      const rules = getAllRules();
+      const parsedRecords = raw
+        .map((item) => parseUsageQueueRecord(item, rules, providerIndex))
+        .filter((r): r is NonNullable<typeof r> => r !== null);
 
-  // Background log parser sync from /logs
-  useEffect(() => {
-    async function syncLogs() {
-      try {
-        const res = await logsApi.fetchLogs({ limit: 100 });
-        if (res?.lines?.length) {
-          const rules = getAllRules();
-          const parsedRecords = res.lines
-            .map((line) => parseUsageRecordFromLog(line, rules))
-            .filter((r): r is NonNullable<typeof r> => r !== null);
-
-          if (parsedRecords.length > 0) {
-            await usageStorage.saveRecords(parsedRecords);
-            await refetch();
-          }
-        }
-      } catch {
-        // Ignored in background
+      if (parsedRecords.length > 0) {
+        await usageStorage.saveRecords(parsedRecords);
       }
+    } catch {
+      // Ignored in background
     }
+  }, [getAllRules]);
 
-    void syncLogs();
-    const interval = setInterval(syncLogs, 15000);
+  // 所有入口共享同一刷新任务，避免并发弹出队列或重复查询 IndexedDB。
+  const handleRefresh = useCallback((): Promise<void> => {
+    if (refreshInFlightRef.current) return refreshInFlightRef.current;
+    const pending = collectUsageQueue()
+      .then(() => refetch())
+      .finally(() => {
+        if (refreshInFlightRef.current === pending) refreshInFlightRef.current = null;
+      });
+    refreshInFlightRef.current = pending;
+    return pending;
+  }, [collectUsageQueue, refetch]);
+
+  useHeaderRefresh(handleRefresh);
+
+  // Usage queue collector: pops finished-request usage records from CPA
+  useEffect(() => {
+    void handleRefresh();
+    const interval = setInterval(() => void handleRefresh(), 15000);
     return () => clearInterval(interval);
-  }, [getAllRules, refetch]);
+  }, [handleRefresh]);
 
   return (
     <div className={styles.container}>
@@ -119,7 +159,7 @@ export function UsagePage() {
             <span className={styles.greenDot} />
             {totalCount.toLocaleString()} 条长期记录
           </span>
-          <Button size="sm" variant="secondary" onClick={() => refetch()} title="刷新数据">
+          <Button size="sm" variant="secondary" onClick={() => void handleRefresh()} title="刷新数据">
             <span className={styles.buttonContent}>
               <IconRefreshCw size={16} />
               刷新
@@ -135,9 +175,6 @@ export function UsagePage() {
               </span>
             }
           />
-          <Button size="sm" variant="secondary" onClick={loadSampleData} title="生成丰富演示数据">
-            生成模拟数据
-          </Button>
           <Button size="sm" variant="danger" onClick={clearRecords} title="清空记录">
             <span className={styles.buttonContent}>
               <IconTrash2 size={16} />
