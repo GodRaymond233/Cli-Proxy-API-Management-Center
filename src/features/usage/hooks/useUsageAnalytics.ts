@@ -77,7 +77,9 @@ export function useUsageAnalytics(records: UsageRecord[], rangeStartTime?: numbe
 
     const totalRequests = records.length;
     const successRate = totalRequests > 0 ? (successfulRequests / totalRequests) * 100 : 100;
-    const cacheHitRate = inputTokens > 0 ? (cacheReadTokens / inputTokens) * 100 : 0;
+    // Anthropic 语义：input 与缓存读/写 token 互不相交，命中率 = 缓存读 ÷ 输入侧总量
+    const cacheInputTotal = inputTokens + cacheReadTokens + cacheWriteTokens;
+    const cacheHitRate = cacheInputTotal > 0 ? (cacheReadTokens / cacheInputTotal) * 100 : 0;
     const avgLatencyMs = totalRequests > 0 ? Math.round(totalLatency / totalRequests) : 0;
 
     // Time window calculation for TPS and RPM
