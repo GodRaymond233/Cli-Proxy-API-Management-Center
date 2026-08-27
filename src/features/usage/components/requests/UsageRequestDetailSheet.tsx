@@ -19,6 +19,11 @@ export function UsageRequestDetailSheet({
   if (!record) return null;
 
   const dateStr = new Date(record.timestamp).toLocaleString();
+  // Anthropic 语义：input 与缓存读/写 token 互不相交，命中率 = 缓存读 ÷ 输入侧总量
+  const cacheInputTotal =
+    record.usage.inputTokens +
+    (record.usage.cacheReadTokens ?? 0) +
+    (record.usage.cacheWriteTokens ?? 0);
 
   return (
     <Sheet open={open} onClose={onClose} title="请求日志详情">
@@ -138,8 +143,8 @@ export function UsageRequestDetailSheet({
             </div>
             <div className={styles.tokenBox}>
               <span className={`${styles.tokenNum} ${styles.hitRate}`}>
-                {record.usage.inputTokens > 0
-                  ? `${(((record.usage.cacheReadTokens ?? 0) / record.usage.inputTokens) * 100).toFixed(1)}%`
+                {cacheInputTotal > 0
+                  ? `${(((record.usage.cacheReadTokens ?? 0) / cacheInputTotal) * 100).toFixed(1)}%`
                   : '—'}
               </span>
               <span className={styles.tokenLabel}>缓存命中率</span>
