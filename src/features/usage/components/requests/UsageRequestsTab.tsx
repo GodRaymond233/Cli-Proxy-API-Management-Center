@@ -161,8 +161,11 @@ export function UsageRequestsTab({ records }: UsageRequestsTabProps) {
                   const isSuccess = r.statusCode >= 200 && r.statusCode < 400;
                   const { inputTokens, outputTokens } = r.usage;
                   const cacheRead = r.usage.cacheReadTokens ?? 0;
-                  // 与总览 KPI 同口径：缓存读取 ÷ 输入（prompt 含缓存部分）
-                  const cacheHitRate = inputTokens > 0 ? (cacheRead / inputTokens) * 100 : 0;
+                  const cacheWrite = r.usage.cacheWriteTokens ?? 0;
+                  // 与总览 KPI 同口径：Anthropic 语义下 input 与缓存读/写互不相交，
+                  // 命中率 = 缓存读 ÷ 输入侧总量（input + cacheRead + cacheWrite），恒 ≤ 100%
+                  const cacheInputTotal = inputTokens + cacheRead + cacheWrite;
+                  const cacheHitRate = cacheInputTotal > 0 ? (cacheRead / cacheInputTotal) * 100 : 0;
                   const latencySec = r.latencyMs / 1000;
                   const tokensPerSec = latencySec > 0 ? Math.round(outputTokens / latencySec) : 0;
 
