@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { authFilesApi } from '@/services/api';
+import { fetchTrackerStatsGroups } from '@/services/api/trackerStats';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { IconSearch, IconX } from '@/components/ui/icons';
@@ -30,8 +31,11 @@ import {
   CARD_ENTRANCE_BUDGET_MS,
   QUOTA_PAGE_SIZE,
   QUOTA_SORT_MODES,
+  QUOTA_STATS_RANGE_MS,
+  QUOTA_STATS_RANGES,
   QUOTA_TAB_ORDER,
   type QuotaSortMode,
+  type QuotaStatsRange,
   type QuotaTabId,
 } from './constants';
 import {
@@ -50,6 +54,11 @@ import type { QuotaProviderType } from './providers/types';
 import { useDevinQuotaAutoLoad } from './providers/devin/useDevinQuotaAutoLoad';
 import { useQuotaActions } from './hooks/useQuotaActions';
 import { useQuotaBatchLoader } from './hooks/useQuotaBatchLoader';
+import {
+  aggregateUsageBySource,
+  usageForAuthFile,
+  type AccountUsageSummary,
+} from './usageStats';
 import { readQuotaUiState, writeQuotaUiState } from './uiState';
 import styles from './QuotaPage.module.scss';
 
@@ -65,6 +74,7 @@ const displayNameFor = (name: string) => name;
 export function QuotaPage() {
   const { t } = useTranslation();
   const connectionStatus = useAuthStore((state) => state.connectionStatus);
+  const apiBase = useAuthStore((state) => state.apiBase);
   const resolvedTheme: ResolvedTheme = useThemeStore((state) => state.resolvedTheme);
 
   const [files, setFiles] = useState<AuthFileItem[]>([]);
@@ -73,6 +83,12 @@ export function QuotaPage() {
   const [tab, setTab] = useState<QuotaTabId>(() => readQuotaUiState()?.tab ?? 'all');
   const [sortMode, setSortMode] = useState<QuotaSortMode>(
     () => readQuotaUiState()?.sortMode ?? 'default'
+  );
+  const [statsRange, setStatsRange] = useState<QuotaStatsRange>(
+    () => readQuotaUiState()?.statsRange ?? '24h'
+  );
+  const [statsBySource, setStatsBySource] = useState<Map<string, AccountUsageSummary>>(
+    () => new Map()
   );
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
@@ -122,6 +138,26 @@ export function QuotaPage() {
       listRequestRef.current += 1;
     };
   }, [loadFiles]);
+
+  /* ---------- 账号用量统计（tracker 插件本地聚合，不打上游） ---------- */
+
+  const loadUsageStats = useCallback(async () => {
+    try {
+      const end = Date.now();
+      const groups = await fetchTrackerStatsGroups(
+        apiBase,
+        end - QUOTA_STATS_RANGE_MS[statsRange],
+        end
+      );
+      setStatsBySource(aggregateUsageBySource(groups));
+    } catch {
+      // 统计条是增强信息：失败静默，不影响额度主体
+    }
+  }, [apiBase, statsRange]);
+
+  useEffect(() => {
+    void loadUsageStats();
+  }, [loadUsageStats]);
 
   /* ---------- 额度缓存 ----------
    * 排在归类/排序之前：「最快恢复优先」要读它算排序键。 */
@@ -199,10 +235,29 @@ export function QuotaPage() {
     writeQuotaUiState({ sortMode: next as QuotaSortMode });
   }, []);
 
+  const handleStatsRangeChange = useCallback((next: string) => {
+    setStatsRange(next as QuotaStatsRange);
+    writeQuotaUiState({ statsRange: next as QuotaStatsRange });
+  }, []);
+
   const sortOptions = useMemo(
     () =>
       QUOTA_SORT_MODES.map((mode) => ({ value: mode, label: t(`quota_management.sort_${mode}`) })),
     [t]
+  );
+
+  const statsRangeOptions = useMemo(
+    () =>
+      QUOTA_STATS_RANGES.map((range) => ({
+        value: range,
+        label: t(`quota_management.usage_stats_range_${range}`),
+      })),
+    [t]
+  );
+
+  const getUsage = useCallback(
+    (entry: QuotaFileEntry) => usageForAuthFile(entry.type, entry.file, statsBySource),
+    [statsBySource]
   );
 
   const { loadedCount, attentionCount } = useMemo(() => {
@@ -250,7 +305,8 @@ export function QuotaPage() {
     if (disableControls) return;
     pendingRefreshRef.current = sessionGeneration;
     void loadFiles();
-  }, [disableControls, loadFiles, sessionGeneration]);
+    void loadUsageStats();
+  }, [disableControls, loadFiles, loadUsageStats, sessionGeneration]);
 
   useEffect(() => {
     const wasLoading = prevLoadingRef.current;
@@ -371,6 +427,15 @@ export function QuotaPage() {
               size="sm"
             />
           </div>
+          <div className={styles.sort}>
+            <Select
+              value={statsRange}
+              options={statsRangeOptions}
+              onChange={handleStatsRangeChange}
+              ariaLabel={t('quota_management.usage_stats_range_label')}
+              size="sm"
+            />
+          </div>
         </div>
 
         {error && (
@@ -420,6 +485,8 @@ export function QuotaPage() {
                 key={`${entry.type}:${getQuotaCacheKey(entry.file)}`}
                 entry={entry}
                 quota={getQuota(entry)}
+                usage={getUsage(entry)}
+                usageRangeLabel={t(`quota_management.usage_stats_range_${statsRange}`)}
                 resolvedTheme={resolvedTheme}
                 canRefresh={canUseActions && !entry.file.disabled}
                 resetting={resettingQuotaName === getQuotaCacheKey(entry.file)}

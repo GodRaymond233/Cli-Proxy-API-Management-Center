@@ -1,8 +1,22 @@
 import type { UsageRecord, UsageFilterParams } from '@/types/usage';
 
 const DB_NAME = 'cpamc_usage_database';
-const DB_VERSION = 1;
+// v2: 新增 dedupKey 索引（双通道采集去重）与 sync_meta 游标库（插件库回填光标）
+const DB_VERSION = 2;
 const STORE_RECORDS = 'usage_records';
+const STORE_SYNC_META = 'sync_meta';
+const SYNC_META_KEY = 'usage-plugin-backfill';
+
+export interface UsageSyncMeta {
+  /** 上次成功回填的窗口终点（ms） */
+  lastSyncedAt?: number;
+  /** 已回填覆盖的最早时间（ms） */
+  oldestCoveredAt?: number;
+  /** 上次回填尝试时间（ms），用于触发节流 */
+  lastRunAt?: number;
+  /** 深挖历史时插件里已无更早数据（避免每次触发继续空走） */
+  historyExhausted?: boolean;
+}
 
 export class UsageDatabase {
   private dbPromise: Promise<IDBDatabase> | null = null;
@@ -30,6 +44,15 @@ export class UsageDatabase {
           store.createIndex('provider', 'provider', { unique: false });
           store.createIndex('statusCode', 'statusCode', { unique: false });
           store.createIndex('requestId', 'requestId', { unique: false });
+        }
+        const recordsStore = (event.target as IDBOpenDBRequest).transaction!.objectStore(
+          STORE_RECORDS
+        );
+        if (!recordsStore.indexNames.contains('dedupKey')) {
+          recordsStore.createIndex('dedupKey', 'dedupKey', { unique: false });
+        }
+        if (!db.objectStoreNames.contains(STORE_SYNC_META)) {
+          db.createObjectStore(STORE_SYNC_META, { keyPath: 'key' });
         }
       };
 
@@ -139,17 +162,110 @@ export class UsageDatabase {
     }
   }
 
+  /**
+   * 查询已存在的去重键 → { id, collectorSource }。供双通道采集在落库前
+   * 做幂等判断（同一请求事件只保留一份，usage-queue 来源优先）。
+   */
+  async getExistingDedupEntries(
+    keys: string[]
+  ): Promise<Map<string, { id: string; collectorSource?: UsageRecord['collectorSource'] }>> {
+    const found = new Map<string, { id: string; collectorSource?: UsageRecord['collectorSource'] }>();
+    if (!keys.length) return found;
+    try {
+      const db = await this.open();
+      return await new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_RECORDS, 'readonly');
+        const index = tx.objectStore(STORE_RECORDS).index('dedupKey');
+        for (const key of keys) {
+          const request = index.get(key);
+          request.onsuccess = () => {
+            const record = request.result as UsageRecord | undefined;
+            if (record) {
+              found.set(key, { id: record.id, collectorSource: record.collectorSource });
+            }
+          };
+        }
+        tx.oncomplete = () => resolve(found);
+        tx.onerror = () => reject(tx.error);
+      });
+    } catch {
+      return found;
+    }
+  }
+
+  /** 本地最新记录时间戳（ms）；无记录返回 null。用于回填光标初始化。 */
+  async getNewestRecordTimestamp(): Promise<number | null> {
+    try {
+      const db = await this.open();
+      return await new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_RECORDS, 'readonly');
+        const index = tx.objectStore(STORE_RECORDS).index('timestamp');
+        const request = index.openCursor(null, 'prev');
+        request.onsuccess = () => {
+          const cursor = request.result;
+          resolve(cursor ? (cursor.key as number) : null);
+        };
+        request.onerror = () => reject(request.error);
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  async getSyncMeta(): Promise<UsageSyncMeta> {
+    try {
+      const db = await this.open();
+      return await new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_SYNC_META, 'readonly');
+        const request = tx.objectStore(STORE_SYNC_META).get(SYNC_META_KEY);
+        request.onsuccess = () => {
+          const value = request.result as { key: string; meta: UsageSyncMeta } | undefined;
+          resolve(value?.meta || {});
+        };
+        request.onerror = () => reject(request.error);
+      });
+    } catch {
+      try {
+        const raw = localStorage.getItem('cpamc_usage_sync_meta');
+        return raw ? (JSON.parse(raw) as UsageSyncMeta) : {};
+      } catch {
+        return {};
+      }
+    }
+  }
+
+  async setSyncMeta(meta: UsageSyncMeta): Promise<void> {
+    try {
+      const db = await this.open();
+      const tx = db.transaction(STORE_SYNC_META, 'readwrite');
+      tx.objectStore(STORE_SYNC_META).put({ key: SYNC_META_KEY, meta });
+      return new Promise((resolve, reject) => {
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    } catch {
+      try {
+        localStorage.setItem('cpamc_usage_sync_meta', JSON.stringify(meta));
+      } catch {
+        // Ignored
+      }
+    }
+  }
+
   async clearAllRecords(): Promise<void> {
     try {
       const db = await this.open();
-      const tx = db.transaction(STORE_RECORDS, 'readwrite');
+      const tx = db.transaction([STORE_RECORDS, STORE_SYNC_META], 'readwrite');
       tx.objectStore(STORE_RECORDS).clear();
+      // 清空本地记录时同步重置回填光标，下一次触发按默认窗口重新回填
+      tx.objectStore(STORE_SYNC_META).clear();
       return new Promise((resolve, reject) => {
         tx.oncomplete = () => resolve();
         tx.onerror = () => reject(tx.error);
       });
     } catch {
       localStorage.removeItem('cpamc_usage_fallback_records');
+      localStorage.removeItem('cpamc_usage_sync_meta');
     }
   }
 

@@ -60,7 +60,7 @@ export function UsageKpiGrid({ kpi }: UsageKpiGridProps) {
         <div className={styles.label}>缓存命中率</div>
         <div className={styles.mainValue}>{kpi.cacheHitRate}%</div>
         <div className={styles.subMeta}>
-          <span>缓存 {formatCompactNumber(kpi.cacheReadTokens)} / {formatCompactNumber(kpi.inputTokens)}</span>
+          <span>缓存 {formatCompactNumber(kpi.cacheReadTokens)} / 输入侧 {formatCompactNumber(kpi.cacheInputTokens)}</span>
         </div>
       </div>
 

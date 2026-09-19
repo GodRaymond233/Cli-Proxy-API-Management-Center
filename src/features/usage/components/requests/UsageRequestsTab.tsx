@@ -5,6 +5,7 @@ import { UsageRequestDetailSheet } from './UsageRequestDetailSheet';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { maskInstanceLabel } from '../../collector/logCollector';
+import { resolveRecordCacheHitRate } from '../../tokenSemantics';
 import styles from './UsageRequestsTab.module.scss';
 
 const EFFORT_RANK: Record<string, number> = {
@@ -161,11 +162,9 @@ export function UsageRequestsTab({ records }: UsageRequestsTabProps) {
                   const isSuccess = r.statusCode >= 200 && r.statusCode < 400;
                   const { inputTokens, outputTokens } = r.usage;
                   const cacheRead = r.usage.cacheReadTokens ?? 0;
-                  const cacheWrite = r.usage.cacheWriteTokens ?? 0;
-                  // 与总览 KPI 同口径：Anthropic 语义下 input 与缓存读/写互不相交，
-                  // 命中率 = 缓存读 ÷ 输入侧总量（input + cacheRead + cacheWrite），恒 ≤ 100%
-                  const cacheInputTotal = inputTokens + cacheRead + cacheWrite;
-                  const cacheHitRate = cacheInputTotal > 0 ? (cacheRead / cacheInputTotal) * 100 : 0;
+                  // 命中率分母按记录的 token 语义解析（Codex/OpenAI 系 input 已含缓存，
+                  // Anthropic 系互不相交），见 tokenSemantics.ts
+                  const cacheHitRate = resolveRecordCacheHitRate(r);
                   const latencySec = r.latencyMs / 1000;
                   const tokensPerSec = latencySec > 0 ? Math.round(outputTokens / latencySec) : 0;
 

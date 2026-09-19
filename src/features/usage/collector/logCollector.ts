@@ -1,5 +1,7 @@
 import type { UsageRecord, TokenUsage, ModelPricingRule } from '@/types/usage';
 import { calculateUsageCost, matchPricingRule } from '../pricing/costEngine';
+import { buildUsageDedupKey } from './usageDedup';
+import { computeInputSideTokens } from '../tokenSemantics';
 
 /**
  * CPA usage-queue 记录（GET /v0/management/usage-queue，取出即弹出）。
@@ -19,7 +21,19 @@ interface UsageQueueRecord {
     cache_creation_tokens?: number;
     total_tokens?: number;
   };
+  /** 规范 token 分桶（accounting_version=2，sdk/cliproxy/usage TokenBreakdown） */
+  token_breakdown?: {
+    schema_version?: number;
+    quality?: string;
+    input?: {
+      total_tokens?: number;
+      uncached_tokens?: number;
+      cache_read_tokens?: number;
+      cache_write_tokens?: number;
+    };
+  };
   provider?: string;
+  executor_type?: string;
   model?: string;
   alias?: string;
   original_alias?: string;
@@ -105,6 +119,9 @@ const redactKnownSecrets = (value: unknown, secrets: Array<string | undefined>):
 
 export type ProviderInstanceIndex = Map<string, { name: string; baseUrl: string }>;
 
+/** `${上游模型名}::${客户端可见名(alias||name)}` → base-url。同名冲突的键不收录。 */
+export type ProviderModelAliasIndex = Map<string, string>;
+
 const API_KEY_CONFIG_SECTIONS = [
   'codex-api-key',
   'claude-api-key',
@@ -173,6 +190,46 @@ export function buildProviderInstanceIndex(rawConfig: unknown): ProviderInstance
   return index;
 }
 
+/**
+ * 由 GET /v0/management/config 构建 (上游模型名, 客户端可见名) → base-url 索引。
+ * 插件库的回填记录只带 provider/model/alias/auth_type，不带 auth_index 或密钥，
+ * api-key 行的 source 已被插件脱敏为 provider 官方地址（如 https://api.openai.com/v1），
+ * 需要靠这对键反查配置里真实的中转 base-url。
+ */
+export function buildProviderModelAliasIndex(rawConfig: unknown): ProviderModelAliasIndex {
+  const index: ProviderModelAliasIndex = new Map();
+  if (typeof rawConfig !== 'object' || rawConfig === null) return index;
+
+  const config = rawConfig as Record<string, unknown>;
+  for (const section of API_KEY_CONFIG_SECTIONS) {
+    const list = config[section];
+    if (!Array.isArray(list)) continue;
+    for (const record of list) {
+      if (typeof record !== 'object' || record === null) continue;
+      const baseUrl = (record as Record<string, unknown>)['base-url'];
+      const url = typeof baseUrl === 'string' ? baseUrl.trim() : '';
+      if (!url || !isHttpUrl(url)) continue;
+      const models = (record as Record<string, unknown>).models;
+      if (!Array.isArray(models)) continue;
+      for (const model of models) {
+        if (typeof model !== 'object' || model === null) continue;
+        const entry = model as Record<string, unknown>;
+        const name = typeof entry.name === 'string' ? entry.name.trim() : '';
+        if (!name) continue;
+        const alias = typeof entry.alias === 'string' ? entry.alias.trim() : '';
+        const key = `${name}::${alias || name}`;
+        if (index.has(key) && index.get(key) !== url) {
+          index.delete(key); // 同名多线路，无法唯一定位，放弃该键
+        } else {
+          index.set(key, url);
+        }
+      }
+    }
+  }
+
+  return index;
+}
+
 export function parseUsageQueueRecord(
   raw: unknown,
   pricingRules: ModelPricingRule[] = [],
@@ -192,6 +249,28 @@ export function parseUsageQueueRecord(
   const cacheReadTokens = int64(tokens.cache_read_tokens);
   const cacheWriteTokens = int64(tokens.cache_creation_tokens);
   const totalTokens = int64(tokens.total_tokens) || inputTokens + outputTokens;
+  const provider = (record.provider || '').trim() || 'unknown';
+  const executorType = (record.executor_type || '').trim() || undefined;
+
+  // 命中率分母（输入侧总量）：优先宿主 token_breakdown 的规范分桶
+  // （两种语义下 input.total_tokens 恒等于 未命中+缓存读+缓存写），
+  // 旧宿主无分桶时按 provider 语义现算；无缓存的记录不存，界面显示 "—"。
+  const breakdownInputTotal = int64(record.token_breakdown?.input?.total_tokens);
+  const cacheTotal = cacheReadTokens + cacheWriteTokens;
+  const inputSideTokens =
+    cacheTotal > 0
+      ? record.token_breakdown?.schema_version === 2 &&
+          record.token_breakdown?.quality === 'complete' &&
+          breakdownInputTotal > 0
+        ? breakdownInputTotal
+        : computeInputSideTokens(
+            inputTokens,
+            cacheReadTokens,
+            cacheWriteTokens,
+            provider,
+            executorType
+          )
+      : undefined;
 
   const usage: TokenUsage = {
     inputTokens,
@@ -199,6 +278,7 @@ export function parseUsageQueueRecord(
     reasoningTokens: reasoningTokens > 0 ? reasoningTokens : undefined,
     cacheReadTokens: cacheReadTokens > 0 ? cacheReadTokens : undefined,
     cacheWriteTokens: cacheWriteTokens > 0 ? cacheWriteTokens : undefined,
+    inputSideTokens: inputSideTokens && inputSideTokens > 0 ? inputSideTokens : undefined,
     totalTokens,
   };
 
@@ -206,7 +286,7 @@ export function parseUsageQueueRecord(
   const failed = record.failed === true;
   const statusCode =
     int64(record.fail?.status_code) || (failed ? 500 : 200);
-  const provider = (record.provider || '').trim() || 'unknown';
+  const latencyMs = int64(record.latency_ms);
   const rule = matchPricingRule(model, pricingRules);
 
   // 实例身份：OAuth 显示凭据邮箱；api-key 实例显示中转 base-url（auth_index 或
@@ -236,6 +316,7 @@ export function parseUsageQueueRecord(
     requestedModel: (record.original_alias || '').trim() || undefined,
     modelAlias: (record.alias || '').trim() || undefined,
     provider,
+    executorType,
     providerInstanceId: authIndex,
     providerInstanceLabel,
     providerInstanceUrl: instanceUrl,
@@ -244,11 +325,13 @@ export function parseUsageQueueRecord(
     endpoint: (record.endpoint || '').trim(),
     httpMethod: 'POST',
     statusCode,
-    latencyMs: int64(record.latency_ms),
+    latencyMs,
     keyName: record.api_key ? maskKey(record.api_key) : undefined,
     sourceIp: (record.client_ip || '').trim() || undefined,
     usage,
     estimatedCostUsd: calculateUsageCost(usage, rule),
+    dedupKey: buildUsageDedupKey(timestamp, model, totalTokens, latencyMs),
+    collectorSource: 'usage-queue',
     errorMessage: failed
       ? redactKnownSecrets(record.fail?.body, [
           record.api_key,

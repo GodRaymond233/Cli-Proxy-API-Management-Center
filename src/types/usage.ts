@@ -4,6 +4,8 @@ export interface TokenUsage {
   reasoningTokens?: number;
   cacheReadTokens?: number;
   cacheWriteTokens?: number;
+  /** 输入侧 token 总量（未命中 input + 缓存读 + 缓存写），缓存命中率分母；仅缓存>0 的记录携带 */
+  inputSideTokens?: number;
   totalTokens: number;
 }
 
@@ -28,6 +30,8 @@ export interface UsageRecord {
   providerInstanceUrl?: string;
   /** 认证方式（后端 auth_type：oauth / api-key） */
   providerAuthType?: string;
+  /** 后端 executor_type（如 CodexExecutor），用于 token 语义分类，旧记录可能缺失 */
+  executorType?: string;
   /** 推力强度（reasoning effort，如 medium/high/xhigh/max） */
   reasoningEffort?: string;
   endpoint: string;
@@ -39,6 +43,10 @@ export interface UsageRecord {
   usage: TokenUsage;
   estimatedCostUsd: number;
   errorMessage?: string;
+  /** 同一请求事件的规范去重键（两条采集通道共享，时间秒+模型+总token+延迟） */
+  dedupKey?: string;
+  /** 记录来源：usage-queue = 实时队列（字段最全），plugin-backfill = 插件库回填（缺 endpoint/ip/requestId） */
+  collectorSource?: 'usage-queue' | 'plugin-backfill';
 }
 
 export type UsageTimeRange = 'today' | '24h' | '7d' | '30d' | 'all';
@@ -97,6 +105,8 @@ export interface UsageKpiSummary {
   reasoningTokens: number;
   cacheReadTokens: number;
   cacheWriteTokens: number;
+  /** 命中率分母合计：各记录输入侧总量（未命中 input + 缓存读 + 缓存写）之和 */
+  cacheInputTokens: number;
   cacheHitRate: number;
   avgLatencyMs: number;
   p95LatencyMs: number;
