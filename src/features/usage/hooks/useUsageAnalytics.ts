@@ -6,6 +6,7 @@ import type {
   RankItem,
   HourlyDistributionItem,
 } from '@/types/usage';
+import { resolveRecordInputSideTokens } from '../tokenSemantics';
 
 export function useUsageAnalytics(records: UsageRecord[], rangeStartTime?: number) {
   // 1. KPI Summary
@@ -22,6 +23,7 @@ export function useUsageAnalytics(records: UsageRecord[], rangeStartTime?: numbe
         reasoningTokens: 0,
         cacheReadTokens: 0,
         cacheWriteTokens: 0,
+        cacheInputTokens: 0,
         cacheHitRate: 0,
         avgLatencyMs: 0,
         p95LatencyMs: 0,
@@ -41,6 +43,7 @@ export function useUsageAnalytics(records: UsageRecord[], rangeStartTime?: numbe
     let reasoningTokens = 0;
     let cacheReadTokens = 0;
     let cacheWriteTokens = 0;
+    let cacheInputTokens = 0;
     let totalLatency = 0;
     let totalCostUsd = 0;
     let pricedCount = 0;
@@ -61,6 +64,9 @@ export function useUsageAnalytics(records: UsageRecord[], rangeStartTime?: numbe
       reasoningTokens += u.reasoningTokens ?? 0;
       cacheReadTokens += u.cacheReadTokens ?? 0;
       cacheWriteTokens += u.cacheWriteTokens ?? 0;
+      // 分母必须逐条解析后求和：Codex/OpenAI 系 input_tokens 已含缓存，
+      // Anthropic 系互不相交，直接拿总和相加会把前者缓存计两遍
+      cacheInputTokens += resolveRecordInputSideTokens(r);
 
       totalLatency += r.latencyMs;
       latencies.push(r.latencyMs);
@@ -77,9 +83,8 @@ export function useUsageAnalytics(records: UsageRecord[], rangeStartTime?: numbe
 
     const totalRequests = records.length;
     const successRate = totalRequests > 0 ? (successfulRequests / totalRequests) * 100 : 100;
-    // Anthropic 语义：input 与缓存读/写 token 互不相交，命中率 = 缓存读 ÷ 输入侧总量
-    const cacheInputTotal = inputTokens + cacheReadTokens + cacheWriteTokens;
-    const cacheHitRate = cacheInputTotal > 0 ? (cacheReadTokens / cacheInputTotal) * 100 : 0;
+    // 命中率 = 缓存读合计 ÷ 各记录输入侧总量（未命中 input + 缓存读 + 缓存写）合计
+    const cacheHitRate = cacheInputTokens > 0 ? (cacheReadTokens / cacheInputTokens) * 100 : 0;
     const avgLatencyMs = totalRequests > 0 ? Math.round(totalLatency / totalRequests) : 0;
 
     // Time window calculation for TPS and RPM
@@ -104,6 +109,7 @@ export function useUsageAnalytics(records: UsageRecord[], rangeStartTime?: numbe
       reasoningTokens,
       cacheReadTokens,
       cacheWriteTokens,
+      cacheInputTokens,
       cacheHitRate: parseFloat(cacheHitRate.toFixed(1)),
       avgLatencyMs,
       p95LatencyMs,

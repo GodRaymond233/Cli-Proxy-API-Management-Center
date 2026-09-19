@@ -1185,7 +1185,16 @@
     "weekday_wed": "Ср",
     "weekday_thu": "Чт",
     "weekday_fri": "Пт",
-    "weekday_sat": "Сб"
+    "weekday_sat": "Сб",
+    "usage_stats_range_label": "Диапазон статистики использования",
+    "usage_stats_range_24h": "24 часа",
+    "usage_stats_range_7d": "7 дней",
+    "usage_stats_range_30d": "30 дней",
+    "usage_stats_requests": "{{count}} запросов",
+    "usage_stats_tokens_unit": "токенов",
+    "usage_stats_cached": "кэш {{value}}",
+    "usage_stats_failed": "{{count}} с ошибкой",
+    "usage_stats_hint": "{{range}}: {{requests}} запросов · входные {{input}} · выходные {{output}} · reasoning {{reasoning}} · кэш {{cached}} · всего {{total}} токенов"
   },
   "plugin_management": {
     "title": "Управление плагинами",

@@ -19,5 +19,16 @@ export const QUOTA_SORT_MODES = ['default', 'soonest'] as const;
 
 export type QuotaSortMode = (typeof QUOTA_SORT_MODES)[number];
 
+/** 卡片用量统计条的时间窗口（tracker 插件本地聚合，切换即重查）。 */
+export const QUOTA_STATS_RANGES = ['24h', '7d', '30d'] as const;
+
+export type QuotaStatsRange = (typeof QUOTA_STATS_RANGES)[number];
+
+export const QUOTA_STATS_RANGE_MS: Record<QuotaStatsRange, number> = {
+  '24h': 24 * 60 * 60 * 1000,
+  '7d': 7 * 24 * 60 * 60 * 1000,
+  '30d': 30 * 24 * 60 * 60 * 1000,
+};
+
 /** 与 useRevealGroup 的 GROUP_MAX_TOTAL 一致：卡片级联总预算 360ms。 */
 export const CARD_ENTRANCE_BUDGET_MS = 360;

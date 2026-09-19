@@ -85,6 +85,42 @@
   @include text-ellipsis;
 }
 
+/* ---------- 用量统计条（tracker 插件本地聚合；idle 态也显示） ---------- */
+
+.usageStrip {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 3px 10px;
+  padding: 6px 10px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--bg-tertiary) 45%, transparent);
+  font-family: $font-mono;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.usageItem {
+  white-space: nowrap;
+}
+
+.usageValue {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.usageMuted {
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.usageFailed {
+  color: var(--viz-failure);
+  white-space: nowrap;
+}
+
 /* ---------- body 容器 ---------- */
 
 .body {

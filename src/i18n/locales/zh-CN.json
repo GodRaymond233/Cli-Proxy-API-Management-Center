@@ -1198,7 +1198,16 @@
     "weekday_wed": "三",
     "weekday_thu": "四",
     "weekday_fri": "五",
-    "weekday_sat": "六"
+    "weekday_sat": "六",
+    "usage_stats_range_label": "用量统计范围",
+    "usage_stats_range_24h": "近 24 小时",
+    "usage_stats_range_7d": "近 7 天",
+    "usage_stats_range_30d": "近 30 天",
+    "usage_stats_requests": "{{count}} 次请求",
+    "usage_stats_tokens_unit": "tokens",
+    "usage_stats_cached": "缓存 {{value}}",
+    "usage_stats_failed": "{{count}} 次失败",
+    "usage_stats_hint": "{{range}}：{{requests}} 次请求 · 输入 {{input}} · 输出 {{output}} · 推理 {{reasoning}} · 缓存 {{cached}} · 合计 {{total}} tokens"
   },
   "plugin_management": {
     "title": "插件管理",

@@ -17,31 +17,50 @@ import { apiClient } from '@/services/api/client';
 import {
   parseUsageQueueRecord,
   buildProviderInstanceIndex,
+  buildProviderModelAliasIndex,
   type ProviderInstanceIndex,
+  type ProviderModelAliasIndex,
 } from './collector/logCollector';
+import { collectPluginBackfill } from './collector/pluginBackfillCollector';
 import { usageStorage } from './storage/usageStorage';
 import { usePricingStore } from './hooks/usePricingStore';
+import { useAuthStore } from '@/stores/useAuthStore';
+import { normalizeApiBase } from '@/utils/connection';
 import styles from './UsagePage.module.scss';
 
 type ActiveTab = 'overview' | 'analytics' | 'requests' | 'pricing';
 
 // auth_index / api-key → { name, baseUrl }：把 api-key 实例显示为中转 URL 而非密钥。
+// (上游模型名, 客户端可见名) → baseUrl：插件回填行 api-key source 的反查索引。
 // 60s 缓存，避免随 15s 采集周期反复请求配置。
 const PROVIDER_INDEX_TTL_MS = 60_000;
-let providerIndexCache: { at: number; index: ProviderInstanceIndex } | null = null;
+let providerIndexCache: {
+  at: number;
+  instanceIndex: ProviderInstanceIndex;
+  modelAliasIndex: ProviderModelAliasIndex;
+} | null = null;
 
-async function getProviderIndex(): Promise<ProviderInstanceIndex> {
+async function getProviderIndexes(): Promise<{
+  instanceIndex: ProviderInstanceIndex;
+  modelAliasIndex: ProviderModelAliasIndex;
+}> {
   if (providerIndexCache && Date.now() - providerIndexCache.at < PROVIDER_INDEX_TTL_MS) {
-    return providerIndexCache.index;
+    return {
+      instanceIndex: providerIndexCache.instanceIndex,
+      modelAliasIndex: providerIndexCache.modelAliasIndex,
+    };
   }
-  let index: ProviderInstanceIndex = new Map();
+  let instanceIndex: ProviderInstanceIndex = new Map();
+  let modelAliasIndex: ProviderModelAliasIndex = new Map();
   try {
-    index = buildProviderInstanceIndex(await apiClient.get('/config'));
+    const rawConfig = await apiClient.get('/config');
+    instanceIndex = buildProviderInstanceIndex(rawConfig);
+    modelAliasIndex = buildProviderModelAliasIndex(rawConfig);
   } catch {
     // 配置不可用时退化为遮蔽形态，不阻塞采集
   }
-  providerIndexCache = { at: Date.now(), index };
-  return index;
+  providerIndexCache = { at: Date.now(), instanceIndex, modelAliasIndex };
+  return { instanceIndex, modelAliasIndex };
 }
 
 const TABS: { key: ActiveTab; label: string }[] = [
@@ -57,6 +76,7 @@ export function UsagePage() {
   const [autoRefresh, setAutoRefresh] = useState(false);
   const refreshInFlightRef = useRef<Promise<void> | null>(null);
   const getAllRules = usePricingStore((state) => state.getAllRules);
+  const authApiBase = useAuthStore((state) => state.apiBase);
 
   // 切换页签时重放入场级联（容器随 key 重挂载）
   const revealRef = useRevealGroup<HTMLDivElement>();
@@ -95,14 +115,14 @@ export function UsagePage() {
   // Usage queue collector: pops finished-request usage records from CPA
   const collectUsageQueue = useCallback(async () => {
     try {
-      const [raw, providerIndex] = await Promise.all([
+      const [raw, { instanceIndex }] = await Promise.all([
         logsApi.fetchUsageQueue(200),
-        getProviderIndex(),
+        getProviderIndexes(),
       ]);
       if (!Array.isArray(raw) || raw.length === 0) return;
       const rules = getAllRules();
       const parsedRecords = raw
-        .map((item) => parseUsageQueueRecord(item, rules, providerIndex))
+        .map((item) => parseUsageQueueRecord(item, rules, instanceIndex))
         .filter((r): r is NonNullable<typeof r> => r !== null);
 
       if (parsedRecords.length > 0) {
@@ -113,17 +133,37 @@ export function UsagePage() {
     }
   }, [getAllRules]);
 
+  // 插件库回填采集器：页面关闭/进程重启期间 usage-queue 丢失的记录，
+  // 从插件持久化库（365 天）对账补齐。挂载、手动刷新、页面重新可见时触发。
+  const collectBackfill = useCallback(async () => {
+    try {
+      const { modelAliasIndex } = await getProviderIndexes();
+      await collectPluginBackfill({
+        baseUrl: normalizeApiBase(authApiBase),
+        pricingRules: getAllRules(),
+        modelAliasIndex,
+        requestedStart: filterParams.timeRange.startTime,
+        walkOlder: timeRange === 'all',
+      });
+    } catch {
+      // 回填失败不阻塞实时采集，光标未前进，下次触发重试
+    }
+  }, [authApiBase, getAllRules, filterParams.timeRange.startTime, timeRange]);
+
   // 所有入口共享同一刷新任务，避免并发弹出队列或重复查询 IndexedDB。
   const handleRefresh = useCallback((): Promise<void> => {
     if (refreshInFlightRef.current) return refreshInFlightRef.current;
-    const pending = collectUsageQueue()
-      .then(() => refetch())
-      .finally(() => {
-        if (refreshInFlightRef.current === pending) refreshInFlightRef.current = null;
-      });
+    const pending = (async () => {
+      await collectUsageQueue();
+      await refetch();
+      await collectBackfill();
+      await refetch();
+    })().finally(() => {
+      refreshInFlightRef.current = null;
+    });
     refreshInFlightRef.current = pending;
     return pending;
-  }, [collectUsageQueue, refetch]);
+  }, [collectUsageQueue, collectBackfill, refetch]);
 
   useHeaderRefresh(handleRefresh);
 
@@ -132,6 +172,15 @@ export function UsagePage() {
     void handleRefresh();
     const interval = setInterval(() => void handleRefresh(), 15000);
     return () => clearInterval(interval);
+  }, [handleRefresh]);
+
+  // 标签页从后台/睡眠恢复时补一次采集，找回睡着期间漏收的记录
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void handleRefresh();
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
   }, [handleRefresh]);
 
   return (

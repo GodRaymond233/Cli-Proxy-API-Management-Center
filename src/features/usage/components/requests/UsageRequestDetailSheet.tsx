@@ -3,6 +3,7 @@ import { Sheet } from '@/components/ui/Sheet';
 import { Button } from '@/components/ui/Button';
 import { copyToClipboard } from '@/utils/clipboard';
 import { maskInstanceLabel } from '../../collector/logCollector';
+import { resolveRecordCacheHitRate } from '../../tokenSemantics';
 import styles from './UsageRequestDetailSheet.module.scss';
 
 interface UsageRequestDetailSheetProps {
@@ -19,11 +20,9 @@ export function UsageRequestDetailSheet({
   if (!record) return null;
 
   const dateStr = new Date(record.timestamp).toLocaleString();
-  // Anthropic 语义：input 与缓存读/写 token 互不相交，命中率 = 缓存读 ÷ 输入侧总量
-  const cacheInputTotal =
-    record.usage.inputTokens +
-    (record.usage.cacheReadTokens ?? 0) +
-    (record.usage.cacheWriteTokens ?? 0);
+  // 命中率分母按记录的 token 语义解析（Codex/OpenAI 系 input 已含缓存，
+  // Anthropic 系互不相交），见 tokenSemantics.ts
+  const cacheHitRate = resolveRecordCacheHitRate(record);
 
   return (
     <Sheet open={open} onClose={onClose} title="请求日志详情">
@@ -51,7 +50,7 @@ export function UsageRequestDetailSheet({
             </div>
             <div className={styles.field}>
               <span className={styles.label}>请求路径</span>
-              <span className={styles.valMono}>{record.httpMethod} {record.endpoint}</span>
+              <span className={styles.valMono}>{record.endpoint ? `${record.httpMethod} ${record.endpoint}` : '—'}</span>
             </div>
             <div className={styles.field}>
               <span className={styles.label}>鉴权密钥</span>
@@ -143,9 +142,7 @@ export function UsageRequestDetailSheet({
             </div>
             <div className={styles.tokenBox}>
               <span className={`${styles.tokenNum} ${styles.hitRate}`}>
-                {cacheInputTotal > 0
-                  ? `${(((record.usage.cacheReadTokens ?? 0) / cacheInputTotal) * 100).toFixed(1)}%`
-                  : '—'}
+                {cacheHitRate > 0 ? `${cacheHitRate.toFixed(1)}%` : '—'}
               </span>
               <span className={styles.tokenLabel}>缓存命中率</span>
             </div>

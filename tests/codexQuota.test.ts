@@ -1,7 +1,12 @@
 import { describe, expect, test } from 'bun:test';
 import type { TFunction } from 'i18next';
-import { CODEX_CONFIG, buildCodexQuotaWindows } from '@/features/quota/providers/codex/data';
-import type { CodexQuotaState, CodexUsagePayload } from '@/types';
+import {
+  CODEX_CONFIG,
+  buildCodexQuotaWindows,
+  hasRecoveredFiveHourWindow,
+  type CodexQuotaData,
+} from '@/features/quota/providers/codex/data';
+import type { CodexQuotaState, CodexQuotaWindow, CodexUsagePayload } from '@/types';
 import { normalizeCodexResetCreditsPayload, parseCodexUsagePayload } from '@/utils/quota';
 
 const t = ((key: string) => key) as TFunction;
@@ -85,5 +90,79 @@ describe('Codex current usage payload', () => {
     };
 
     expect(CODEX_CONFIG.canResetQuota?.(quota)).toBeTrue();
+  });
+});
+
+describe('Codex five-hour recovery detection (local cooldown self-heal)', () => {
+  const window = (overrides: Partial<CodexQuotaWindow>): CodexQuotaWindow => ({
+    id: 'five-hour',
+    label: '5h',
+    usedPercent: 100,
+    resetLabel: '-',
+    ...overrides,
+  });
+
+  const quotaData = (windows: CodexQuotaWindow[]): CodexQuotaData => ({
+    planType: 'plus',
+    subscriptionActiveUntil: null,
+    rateLimitResetCreditsAvailableCount: null,
+    rateLimitResetCreditsApplicableAvailableCount: null,
+    rateLimitResetCredits: [],
+    rateLimitResetCreditsError: '',
+    windows,
+  });
+
+  test('not recovered while the five-hour window is still full', () => {
+    expect(hasRecoveredFiveHourWindow(quotaData([window({ usedPercent: 100 })]))).toBeFalse();
+  });
+
+  test('not recovered when the five-hour window is missing', () => {
+    expect(
+      hasRecoveredFiveHourWindow(quotaData([window({ id: 'weekly', usedPercent: 10 })]))
+    ).toBeFalse();
+  });
+
+  test('not recovered when usage is unknown', () => {
+    expect(hasRecoveredFiveHourWindow(quotaData([window({ usedPercent: null })]))).toBeFalse();
+  });
+
+  test('recovered when the five-hour window has spare capacity and no other window is full', () => {
+    expect(
+      hasRecoveredFiveHourWindow(
+        quotaData([
+          window({ usedPercent: 62 }),
+          window({ id: 'weekly', usedPercent: 84 }),
+        ])
+      )
+    ).toBeTrue();
+  });
+
+  test('not recovered when another window (e.g. weekly) is still saturated', () => {
+    expect(
+      hasRecoveredFiveHourWindow(
+        quotaData([
+          window({ usedPercent: 62 }),
+          window({ id: 'weekly', usedPercent: 100 }),
+        ])
+      )
+    ).toBeFalse();
+  });
+
+  test('ignores other windows with unknown usage', () => {
+    expect(
+      hasRecoveredFiveHourWindow(
+        quotaData([
+          window({ usedPercent: 62 }),
+          window({ id: 'weekly', usedPercent: null }),
+        ])
+      )
+    ).toBeTrue();
+  });
+
+  test('recovered once the reported reset instant has passed', () => {
+    const past = Date.now() - 1000;
+    expect(
+      hasRecoveredFiveHourWindow(quotaData([window({ usedPercent: 100, resetAtMs: past })]))
+    ).toBeTrue();
   });
 });

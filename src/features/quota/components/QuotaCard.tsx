@@ -11,6 +11,7 @@ import { useState, type CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
 import { IconRefreshCw } from '@/components/ui/icons';
 import type { ResolvedTheme } from '@/types';
+import { formatCompactNumber } from '@/utils/format';
 import { resolveQuotaErrorMessage } from '@/utils/quota';
 import {
   getAuthFileIcon,
@@ -20,6 +21,7 @@ import {
 } from '@/features/authFiles/constants';
 import { bindQuotaClasses } from '../types';
 import { QUOTA_ADAPTERS, type QuotaCardState } from '../providers';
+import type { AccountUsageSummary } from '../usageStats';
 import { isQuotaRefreshDisabled, type QuotaFileEntry } from '../logic';
 import bodyStyles from './QuotaBody.module.scss';
 import styles from './QuotaCard.module.scss';
@@ -30,6 +32,9 @@ const quotaClasses = bindQuotaClasses(bodyStyles, 'QuotaBody.module.scss');
 export type QuotaCardProps = {
   entry: QuotaFileEntry;
   quota?: QuotaCardState;
+  /** tracker 插件按账号聚合的用量（免费本地数据，idle 态也显示）；null = 无映射/无数据 */
+  usage?: AccountUsageSummary | null;
+  usageRangeLabel?: string;
   resolvedTheme: ResolvedTheme;
   canRefresh: boolean;
   resetting: boolean;
@@ -43,6 +48,8 @@ export function QuotaCard(props: QuotaCardProps) {
   const {
     entry,
     quota,
+    usage,
+    usageRangeLabel,
     resolvedTheme,
     canRefresh,
     resetting,
@@ -76,6 +83,18 @@ export function QuotaCard(props: QuotaCardProps) {
     quota !== undefined &&
     Boolean(adapter.canResetQuota?.(quota));
 
+  const usageTitle = usage
+    ? t('quota_management.usage_stats_hint', {
+        range: usageRangeLabel ?? '',
+        requests: usage.requests,
+        input: usage.inputTokens.toLocaleString(),
+        output: usage.outputTokens.toLocaleString(),
+        reasoning: usage.reasoningTokens.toLocaleString(),
+        cached: usage.cachedTokens.toLocaleString(),
+        total: usage.totalTokens.toLocaleString(),
+      })
+    : undefined;
+
   return (
     <article
       className={`${styles.card} ${mountEntranceDelayMs === null ? '' : styles.cardEnter}`}
@@ -101,6 +120,32 @@ export function QuotaCard(props: QuotaCardProps) {
           {file.name}
         </span>
       </header>
+
+      {usage && (
+        <div className={styles.usageStrip} title={usageTitle}>
+          <span className={styles.usageItem}>
+            {t('quota_management.usage_stats_requests', { count: usage.requests })}
+          </span>
+          <span className={styles.usageItem}>
+            <span className={styles.usageValue}>
+              {formatCompactNumber(usage.totalTokens)}
+            </span>{' '}
+            {t('quota_management.usage_stats_tokens_unit')}
+          </span>
+          {usage.cachedTokens > 0 && (
+            <span className={styles.usageMuted}>
+              {t('quota_management.usage_stats_cached', {
+                value: formatCompactNumber(usage.cachedTokens),
+              })}
+            </span>
+          )}
+          {usage.failedRequests > 0 && (
+            <span className={styles.usageFailed}>
+              {t('quota_management.usage_stats_failed', { count: usage.failedRequests })}
+            </span>
+          )}
+        </div>
+      )}
 
       <div className={styles.body}>
         {status === 'idle' ? (

@@ -1198,7 +1198,16 @@
     "weekday_wed": "Wed",
     "weekday_thu": "Thu",
     "weekday_fri": "Fri",
-    "weekday_sat": "Sat"
+    "weekday_sat": "Sat",
+    "usage_stats_range_label": "Usage stats range",
+    "usage_stats_range_24h": "Last 24 hours",
+    "usage_stats_range_7d": "Last 7 days",
+    "usage_stats_range_30d": "Last 30 days",
+    "usage_stats_requests": "{{count}} requests",
+    "usage_stats_tokens_unit": "tokens",
+    "usage_stats_cached": "cached {{value}}",
+    "usage_stats_failed": "{{count}} failed",
+    "usage_stats_hint": "{{range}}: {{requests}} requests · input {{input}} · output {{output}} · reasoning {{reasoning}} · cached {{cached}} · total {{total}} tokens"
   },
   "plugin_management": {
     "title": "Plugin Management",

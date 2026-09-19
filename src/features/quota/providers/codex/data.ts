@@ -13,7 +13,7 @@ import type {
   CodexQuotaWindow,
   CodexUsagePayload,
 } from '@/types';
-import { apiCallApi, getApiCallErrorMessage } from '@/services/api';
+import { apiCallApi, apiClient, getApiCallErrorMessage } from '@/services/api';
 import {
   CODEX_RATE_LIMIT_RESET_CREDITS_URL,
   CODEX_RATE_LIMIT_RESET_CREDITS_CONSUME_URL,
@@ -445,14 +445,63 @@ const consumeCodexRateLimitResetCredit = async (
 
 const resetCodexQuota = async (file: AuthFileItem, t: TFunction): Promise<CodexQuotaData> => {
   await consumeCodexRateLimitResetCredit(file, t);
-  return fetchCodexQuota(file, t);
+  return fetchCodexQuotaWithSelfHeal(file, t);
+};
+
+/**
+ * 自愈：上游提前重置额度（如消耗 rate-limit-reset credit）后，CPA 本地冷却
+ * 仍按上次 429 的 resets_at 倒计时，不会自行感知。这里在拉到额度数据时
+ * 检测 5h 窗口已恢复，自动清掉该账号的本地冷却（reset-quota 端点），
+ * 免得干等旧恢复点。误清的代价只是上游再回一个 429 重新记冷却。
+ */
+const CODEX_SELF_HEAL_MIN_INTERVAL_MS = 10 * 60 * 1000;
+const codexSelfHealLastAttemptAt = new Map<string, number>();
+
+export const hasRecoveredFiveHourWindow = (data: CodexQuotaData): boolean => {
+  const fiveHour = data.windows.find((window) => window.id === 'five-hour');
+  if (!fiveHour) return false;
+  const fiveHourRecovered =
+    (fiveHour.usedPercent !== null && fiveHour.usedPercent < 100) ||
+    (fiveHour.resetAtMs != null && fiveHour.resetAtMs <= Date.now());
+  if (!fiveHourRecovered) return false;
+  // 其余窗口（周限额等）仍打满时不触发——清了也只会换来一次注定失败的请求
+  return data.windows
+    .filter((window) => window.id !== 'five-hour')
+    .every((window) => window.usedPercent === null || window.usedPercent < 100);
+};
+
+const maybeClearCodexLocalCooldown = async (
+  file: AuthFileItem,
+  data: CodexQuotaData
+): Promise<void> => {
+  const authIndex = normalizeAuthIndex(file['auth_index'] ?? file.authIndex);
+  if (!authIndex || !hasRecoveredFiveHourWindow(data)) return;
+  const now = Date.now();
+  if (now - (codexSelfHealLastAttemptAt.get(authIndex) ?? 0) < CODEX_SELF_HEAL_MIN_INTERVAL_MS) {
+    return;
+  }
+  codexSelfHealLastAttemptAt.set(authIndex, now);
+  try {
+    await apiClient.post('/reset-quota', { auth_index: authIndex });
+  } catch {
+    // 静默失败：面板下次拉额度时会按节流再试
+  }
+};
+
+const fetchCodexQuotaWithSelfHeal = async (
+  file: AuthFileItem,
+  t: TFunction
+): Promise<CodexQuotaData> => {
+  const data = await fetchCodexQuota(file, t);
+  void maybeClearCodexLocalCooldown(file, data);
+  return data;
 };
 
 export const CODEX_CONFIG: QuotaProviderData<CodexQuotaState, CodexQuotaData> = {
   type: 'codex',
   i18nPrefix: 'codex_quota',
   filterFn: (file) => isCodexFile(file) && !isDisabledAuthFile(file),
-  fetchQuota: fetchCodexQuota,
+  fetchQuota: fetchCodexQuotaWithSelfHeal,
   resetQuota: resetCodexQuota,
   canResetQuota: (quota) => (quota.rateLimitResetCreditsAvailableCount ?? 0) > 0,
   storeSelector: (state) => state.codexQuota,
