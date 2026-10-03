@@ -67,7 +67,7 @@ interface PluginRequestPage {
 }
 
 export interface PluginBackfillOptions {
-  /** CPA 实例根地址（如 http://127.0.0.1:8317，不带 /v0/management） */
+  /** CPA 实例根地址（如 http://127.0.0.1:8317，不带管理 API 后缀） */
   baseUrl: string;
   pricingRules: ModelPricingRule[];
   /** (上游模型名, 客户端可见名) → base-url，用于把 api-key 行的官方兜底地址还原为中转 base-url */
@@ -102,7 +102,7 @@ const parseIsoTimestamp = (value: unknown): number => {
 };
 
 export function resolvePluginRequestsUrl(baseUrl: string): string {
-  // 与 normalizeApiBase 同样的防御：剥掉误带的 /v0/management 后缀
+  // 与 normalizeApiBase 同样的防御：剥掉误带的 v0/v8 管理 API 后缀
   const base = (baseUrl || '')
     .trim()
     .replace(/\/?v(?:0|8)\/management\/?$/i, '')

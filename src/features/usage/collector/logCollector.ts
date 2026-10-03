@@ -4,7 +4,7 @@ import { buildUsageDedupKey } from './usageDedup';
 import { computeInputSideTokens } from '../tokenSemantics';
 
 /**
- * CPA usage-queue 记录（GET /v0/management/usage-queue，取出即弹出）。
+ * CPA usage-queue 记录（v8: GET /v8/management/observability/usage/queue，取出即弹出）。
  * 字段定义见 CLIProxyAPI internal/redisqueue/plugin.go 的 queuedUsageDetail。
  */
 interface UsageQueueRecord {
@@ -132,7 +132,7 @@ const API_KEY_CONFIG_SECTIONS = [
 ] as const;
 
 /**
- * 由 GET /v0/management/config 构建 auth_index / api-key → { name, baseUrl } 索引，
+ * 由管理 API config 构建 auth_index / api-key → { name, baseUrl } 索引，
  * 覆盖全部 api-key 形态提供商（codex-api-key、openai-compatibility 等）。
  * 索引仅在采集时内存使用，api-key 不会随之持久化。
  */
@@ -219,7 +219,7 @@ export function buildProviderInstanceIndex(rawConfig: unknown): ProviderInstance
 }
 
 /**
- * 由 GET /v0/management/config 构建 (上游模型名, 客户端可见名) → base-url 索引。
+ * 由管理 API config 构建 (上游模型名, 客户端可见名) → base-url 索引。
  * 插件库的回填记录只带 provider/model/alias/auth_type，不带 auth_index 或密钥，
  * api-key 行的 source 已被插件脱敏为 provider 官方地址（如 https://api.openai.com/v1），
  * 需要靠这对键反查配置里真实的中转 base-url。

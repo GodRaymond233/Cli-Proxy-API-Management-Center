@@ -27,7 +27,7 @@ export type TrackerStatsGroup = {
 };
 
 export function resolvePluginStatsGroupsUrl(baseUrl: string): string {
-  // 与 resolvePluginRequestsUrl 同样的防御：剥掉误带的 /v0/management 后缀
+  // 与 resolvePluginRequestsUrl 同样的防御：剥掉误带的 v0/v8 管理 API 后缀
   const base = (baseUrl || '')
     .trim()
     .replace(/\/?v(?:0|8)\/management\/?$/i, '')
