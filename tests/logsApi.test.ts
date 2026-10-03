@@ -6,6 +6,21 @@ import type { ApiError } from '@/types';
 import { LOGS_TIMEOUT_MS } from '@/utils/constants';
 
 describe('logs domain response normalization', () => {
+  test('reads the v8 usage queue route with a bounded batch', async () => {
+    const get = spyOn(apiClient, 'get').mockResolvedValue([]);
+    try {
+      const signal = new AbortController().signal;
+      await expect(logsApi.fetchUsageQueue(200, { signal })).resolves.toEqual([]);
+      expect(get).toHaveBeenCalledWith('/observability/usage/queue', {
+        params: { count: 200 },
+        signal,
+        timeout: LOGS_TIMEOUT_MS,
+      });
+    } finally {
+      get.mockRestore();
+    }
+  });
+
   test('normalizes lines and timestamps without altering opaque cursors', async () => {
     const get = spyOn(apiClient, 'get').mockResolvedValue({
       lines: [' first ', null, 2, ''],
