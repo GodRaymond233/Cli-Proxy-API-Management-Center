@@ -183,23 +183,26 @@ describe('provider model options', () => {
       })
     );
 
+  const hasLabel = (html: string, key: string, ...labels: string[]): boolean =>
+    html.includes(key) || labels.some((label) => html.includes(label));
+
   test('gates fields by provider capability', () => {
     const vertex = render('vertex');
-    expect(vertex).toContain('providersPage.modelOptions.displayName');
-    expect(vertex).toContain('providersPage.modelOptions.forceMapping');
-    expect(vertex).not.toContain('providersPage.modelOptions.maxContextLength');
-    expect(vertex).not.toContain('providersPage.modelOptions.isCompat');
+    expect(hasLabel(vertex, 'providersPage.modelOptions.displayName', 'Display name', '显示名称', '顯示名稱', 'Отображаемое имя')).toBe(true);
+    expect(hasLabel(vertex, 'providersPage.modelOptions.forceMapping', 'Rewrite response model to alias', '将响应模型名称改写为别名', '將回應模型名稱改寫為別名', 'Заменять имя модели в ответе на псевдоним')).toBe(true);
+    expect(hasLabel(vertex, 'providersPage.modelOptions.maxContextLength', 'Context length', '上下文长度', '上下文長度', 'Размер контекста')).toBe(false);
+    expect(hasLabel(vertex, 'providersPage.modelOptions.isCompat', 'Compatibility mode', '兼容模式', '相容模式', 'Режим совместимости')).toBe(false);
     for (const brand of ['gemini', 'codex', 'openaiCompatibility'] as const) {
       const html = render(brand);
-      expect(html).toContain('providersPage.modelOptions.maxContextLength');
-      expect(html).toContain('providersPage.modelOptions.isCompat');
-      expect(html.includes('providersPage.modelOptions.supportConfigurationUpdate')).toBe(
+      expect(hasLabel(html, 'providersPage.modelOptions.maxContextLength', 'Context length', '上下文长度', '上下文長度', 'Размер контекста')).toBe(true);
+      expect(hasLabel(html, 'providersPage.modelOptions.isCompat', 'Compatibility mode', '兼容模式', '相容模式', 'Режим совместимости')).toBe(true);
+      expect(hasLabel(html, 'providersPage.modelOptions.supportConfigurationUpdate', 'Allow configuration updates', '允许配置更新', '允許設定更新', 'Разрешить обновление конфигурации')).toBe(
         brand === 'codex'
       );
-      expect(html.includes('providersPage.modelOptions.inputModalitiesText')).toBe(
+      expect(hasLabel(html, 'providersPage.modelOptions.inputModalitiesText', 'Input modalities', '输入模态', '輸入模態', 'Входные модальности')).toBe(
         brand === 'openaiCompatibility'
       );
-      expect(html.includes('providersPage.modelOptions.useMaxCompletionTokens')).toBe(
+      expect(hasLabel(html, 'providersPage.modelOptions.useMaxCompletionTokens', 'Use max_completion_tokens', '使用 max_completion_tokens', '使用 max_completion_tokens', 'Использовать max_completion_tokens')).toBe(
         brand === 'openaiCompatibility'
       );
     }

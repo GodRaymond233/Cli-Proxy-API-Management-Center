@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import type { ModelPricingRule, UsageRecord } from '@/types/usage';
 import { usePricingStore } from '../../hooks/usePricingStore';
+import { DEFAULT_PRICING_RULES } from '../../pricing/defaultPricing';
 import { ModelPricingModal } from './ModelPricingModal';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -18,13 +19,20 @@ export function UsagePricingTab({ records }: UsagePricingTabProps) {
   const addRule = usePricingStore((state) => state.addRule);
   const deleteRule = usePricingStore((state) => state.deleteRule);
   const resetToDefaults = usePricingStore((state) => state.resetToDefaults);
-  const getAllRules = usePricingStore((state) => state.getAllRules);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [editingRule, setEditingRule] = useState<ModelPricingRule | null>(null);
 
-  const allRules = useMemo(() => getAllRules(), [getAllRules, customRules]);
+  const allRules = useMemo(() => {
+    const customPatterns = new Set(customRules.map((rule) => rule.modelPattern.toLowerCase()));
+    return [
+      ...customRules,
+      ...DEFAULT_PRICING_RULES.filter(
+        (rule) => !customPatterns.has(rule.modelPattern.toLowerCase())
+      ),
+    ];
+  }, [customRules]);
 
   // Aggregate stats by model
   const modelStatsMap = useMemo(() => {
