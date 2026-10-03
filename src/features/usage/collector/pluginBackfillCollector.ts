@@ -1,6 +1,6 @@
 import type { UsageRecord, ModelPricingRule, TokenUsage } from '@/types/usage';
 import { calculateUsageCost, matchPricingRule } from '../pricing/costEngine';
-import { usageStorage } from '../storage/usageStorage';
+import { usageStorage, type UsageStorage } from '../storage/usageStorage';
 import { buildUsageDedupKey } from './usageDedup';
 import { maskInstanceLabel, type ProviderModelAliasIndex } from './logCollector';
 import { computeInputSideTokens } from '../tokenSemantics';
@@ -77,6 +77,9 @@ export interface PluginBackfillOptions {
   /** 'all' 视图：每次触发继续向更早历史推进一个 MAX_RUN_LOOKBACK 窗口 */
   walkOlder?: boolean;
   now?: number;
+  storage?: UsageStorage;
+  fetchPage?: (url: string) => Promise<unknown>;
+  maxPages?: number;
 }
 
 export interface PluginBackfillResult {
@@ -102,7 +105,7 @@ export function resolvePluginRequestsUrl(baseUrl: string): string {
   // 与 normalizeApiBase 同样的防御：剥掉误带的 /v0/management 后缀
   const base = (baseUrl || '')
     .trim()
-    .replace(/\/?v0\/management\/?$/i, '')
+    .replace(/\/?v(?:0|8)\/management\/?$/i, '')
     .replace(/\/+$/i, '');
   if (!base) return '';
   if (!/^https?:\/\//i.test(base)) return '';
@@ -240,6 +243,8 @@ export const isPluginBackfillAvailable = (baseUrl: string): boolean =>
 export async function collectPluginBackfill(
   options: PluginBackfillOptions
 ): Promise<PluginBackfillResult> {
+  const storage = options.storage ?? usageStorage;
+  const fetchPage = options.fetchPage ?? ((requestUrl: string) => fetchWithTimeout(requestUrl, 20_000));
   const url = resolvePluginRequestsUrl(options.baseUrl);
   const result: PluginBackfillResult = {
     imported: 0,
@@ -251,7 +256,7 @@ export async function collectPluginBackfill(
   if (!url) return result;
 
   const now = options.now ?? Date.now();
-  const meta = await usageStorage.getSyncMeta();
+  const meta = await storage.getSyncMeta();
   if (meta.lastRunAt && now - meta.lastRunAt < MIN_RUN_INTERVAL_MS) {
     return result;
   }
@@ -287,7 +292,7 @@ export async function collectPluginBackfill(
       start = end - MAX_RUN_LOOKBACK_MS;
     }
   } else {
-    const newest = await usageStorage.getNewestRecordTimestamp();
+    const newest = await storage.getNewestRecordTimestamp();
     start = newest != null ? newest + 1 : now - DEFAULT_LOOKBACK_MS;
     if (end - start > MAX_RUN_LOOKBACK_MS) {
       start = end - MAX_RUN_LOOKBACK_MS;
@@ -303,7 +308,9 @@ export async function collectPluginBackfill(
   result.windowEnd = end;
 
   let offset = 0;
-  for (let page = 0; page < MAX_PAGES_PER_RUN; page += 1) {
+  let complete = false;
+  const maxPages = options.maxPages ?? MAX_PAGES_PER_RUN;
+  for (let page = 0; page < maxPages; page += 1) {
     const query = new URLSearchParams({
       range: 'custom',
       start: new Date(start).toISOString(),
@@ -313,7 +320,7 @@ export async function collectPluginBackfill(
     });
     let payload: unknown;
     try {
-      payload = await fetchWithTimeout(`${url}?${query.toString()}`, 20_000);
+      payload = await fetchPage(`${url}?${query.toString()}`);
     } catch {
       // 网络失败/插件不在：保留光标不动，下次触发重试
       return result;
@@ -326,14 +333,25 @@ export async function collectPluginBackfill(
         parsePluginRequestRecord(item, options.pricingRules, options.modelAliasIndex)
       )
       .filter((r): r is NonNullable<typeof r> => r !== null);
-    const plan = await usageStorage.saveRecordsDeduped(parsed);
+    const plan = await storage.saveRecordsDeduped(parsed);
     result.imported += plan.toWrite.length;
     result.skipped += plan.skipped;
     result.pages += 1;
 
-    if (items.length < PLUGIN_PAGE_SIZE) break;
+    if (items.length < PLUGIN_PAGE_SIZE) {
+      complete = true;
+      break;
+    }
     offset += items.length;
-    if (payload.total != null && offset >= payload.total) break;
+    if (payload.total != null && offset >= payload.total) {
+      complete = true;
+      break;
+    }
+  }
+
+  if (!complete) {
+    await storage.setSyncMeta({ ...meta, lastRunAt: now });
+    return result;
   }
 
   const oldestCoveredAt = meta.oldestCoveredAt
@@ -342,7 +360,7 @@ export async function collectPluginBackfill(
   // 深挖轮颗粒无收说明插件里已没有更早数据，停止后续触发继续向历史空走
   const historyExhausted =
     meta.historyExhausted || (isDeepRun && oldestCoveredAt === start && result.imported === 0);
-  await usageStorage.setSyncMeta({
+  await storage.setSyncMeta({
     lastSyncedAt: Math.max(meta.lastSyncedAt ?? 0, end),
     oldestCoveredAt,
     lastRunAt: now,

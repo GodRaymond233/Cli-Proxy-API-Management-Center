@@ -8,6 +8,13 @@ import type {
 } from '@/types/usage';
 import { resolveRecordInputSideTokens } from '../tokenSemantics';
 
+export function percentile95LatencyMs(values: number[]): number {
+  if (!values.length) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * 0.95) - 1));
+  return sorted[index] || 0;
+}
+
 export function useUsageAnalytics(records: UsageRecord[], rangeStartTime?: number) {
   // 1. KPI Summary
   const kpi = useMemo<UsageKpiSummary>(() => {
@@ -77,9 +84,7 @@ export function useUsageAnalytics(records: UsageRecord[], rangeStartTime?: numbe
       }
     });
 
-    latencies.sort((a, b) => a - b);
-    const p95Index = Math.min(latencies.length - 1, Math.floor(latencies.length * 0.95));
-    const p95LatencyMs = latencies[p95Index] || 0;
+    const p95LatencyMs = percentile95LatencyMs(latencies);
 
     const totalRequests = records.length;
     const successRate = totalRequests > 0 ? (successfulRequests / totalRequests) * 100 : 100;

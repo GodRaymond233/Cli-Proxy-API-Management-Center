@@ -30,7 +30,7 @@ export function resolvePluginStatsGroupsUrl(baseUrl: string): string {
   // 与 resolvePluginRequestsUrl 同样的防御：剥掉误带的 /v0/management 后缀
   const base = (baseUrl || '')
     .trim()
-    .replace(/\/?v0\/management\/?$/i, '')
+    .replace(/\/?v(?:0|8)\/management\/?$/i, '')
     .replace(/\/+$/i, '');
   if (!base) return '';
   if (!/^https?:\/\//i.test(base)) return '';

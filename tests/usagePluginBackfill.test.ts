@@ -1,10 +1,12 @@
 import { describe, expect, test } from 'bun:test';
 import { parseUsageQueueRecord, buildProviderModelAliasIndex } from '../src/features/usage/collector/logCollector';
 import {
+  collectPluginBackfill,
   parsePluginRequestRecord,
   resolvePluginRequestsUrl,
 } from '../src/features/usage/collector/pluginBackfillCollector';
 import { buildUsageDedupKey, planDedupedWrites } from '../src/features/usage/collector/usageDedup';
+import type { UsageStorage } from '../src/features/usage/storage/usageStorage';
 import type { UsageRecord, ModelPricingRule } from '../src/types/usage';
 
 const pricingRules: ModelPricingRule[] = [
@@ -233,8 +235,60 @@ describe('plugin backfill collector', () => {
     expect(resolvePluginRequestsUrl('http://127.0.0.1:8317/v0/management')).toBe(
       'http://127.0.0.1:8317/v0/resource/plugins/cap-token-usage-tracker/requests'
     );
+    expect(resolvePluginRequestsUrl('http://127.0.0.1:8317/v8/management')).toBe(
+      'http://127.0.0.1:8317/v0/resource/plugins/cap-token-usage-tracker/requests'
+    );
     expect(resolvePluginRequestsUrl('')).toBe('');
     expect(resolvePluginRequestsUrl('ftp://x')).toBe('');
+  });
+
+  test('does not advance the cursor when the page cap leaves a window incomplete', async () => {
+    let storedMeta: Record<string, number | boolean> = {};
+    let saved = 0;
+    const storage: UsageStorage = {
+      async saveRecords() {},
+      async saveRecordsDeduped(records) {
+        saved += records.length;
+        return { toWrite: records, skipped: 0 };
+      },
+      async getSyncMeta() {
+        return storedMeta;
+      },
+      async setSyncMeta(meta) {
+        storedMeta = meta as Record<string, number | boolean>;
+      },
+      async getNewestRecordTimestamp() {
+        return null;
+      },
+      async query() {
+        return [];
+      },
+      async count() {
+        return 0;
+      },
+      async clear() {},
+    };
+
+    const result = await collectPluginBackfill({
+      baseUrl: 'http://127.0.0.1:8317',
+      pricingRules,
+      now: Date.parse('2026-09-01T00:00:00Z'),
+      maxPages: 1,
+      storage,
+      fetchPage: async () => ({
+        total: 1000,
+        items: Array.from({ length: 500 }, (_, index) => ({
+          ...pluginItem,
+          sequence: index,
+          time: '2026-08-31T23:59:00Z',
+        })),
+      }),
+    });
+
+    expect(result.pages).toBe(1);
+    expect(saved).toBe(500);
+    expect(storedMeta.lastRunAt).toBe(Date.parse('2026-09-01T00:00:00Z'));
+    expect(storedMeta.lastSyncedAt).toBeUndefined();
   });
 });
 

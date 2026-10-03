@@ -11,6 +11,8 @@ export interface TokenUsage {
 
 export interface UsageRecord {
   id: string;
+  /** Canonical CPA root used to isolate records from different management connections. */
+  connectionScope?: string;
   requestId: string;
   timestamp: number;
   /** 实际发送给上游的模型 */

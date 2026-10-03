@@ -1,11 +1,11 @@
 import type { UsageRecord, UsageFilterParams } from '@/types/usage';
 
 const DB_NAME = 'cpamc_usage_database';
-// v2: 新增 dedupKey 索引（双通道采集去重）与 sync_meta 游标库（插件库回填光标）
-const DB_VERSION = 2;
+// v3: retain a connection scope and namespace each backfill cursor.
+const DB_VERSION = 3;
 const STORE_RECORDS = 'usage_records';
 const STORE_SYNC_META = 'sync_meta';
-const SYNC_META_KEY = 'usage-plugin-backfill';
+const LEGACY_SCOPE_KEY = 'cpamc_usage_legacy_scope';
 
 export interface UsageSyncMeta {
   /** 上次成功回填的窗口终点（ms） */
@@ -20,6 +20,40 @@ export interface UsageSyncMeta {
 
 export class UsageDatabase {
   private dbPromise: Promise<IDBDatabase> | null = null;
+  private readonly scope: string;
+  private readonly legacyScope: string;
+
+  constructor(scope = 'default') {
+    this.scope = scope.trim() || 'default';
+    this.legacyScope = this.readOrClaimLegacyScope();
+  }
+
+  private readOrClaimLegacyScope(): string {
+    try {
+      const existing = localStorage.getItem(LEGACY_SCOPE_KEY)?.trim();
+      if (existing) return existing;
+      localStorage.setItem(LEGACY_SCOPE_KEY, this.scope);
+    } catch {
+      // Test and restricted-storage environments have no durable marker.
+    }
+    return this.scope;
+  }
+
+  private syncMetaKey(): string {
+    return `usage-plugin-backfill:${encodeURIComponent(this.scope)}`;
+  }
+
+  private fallbackRecordsKey(): string {
+    return `cpamc_usage_fallback_records:${encodeURIComponent(this.scope)}`;
+  }
+
+  private fallbackSyncMetaKey(): string {
+    return `cpamc_usage_sync_meta:${encodeURIComponent(this.scope)}`;
+  }
+
+  private belongsToScope(record: UsageRecord): boolean {
+    return record.connectionScope === this.scope || (!record.connectionScope && this.legacyScope === this.scope);
+  }
 
   private isSupported(): boolean {
     return typeof window !== 'undefined' && 'indexedDB' in window;
@@ -51,6 +85,9 @@ export class UsageDatabase {
         if (!recordsStore.indexNames.contains('dedupKey')) {
           recordsStore.createIndex('dedupKey', 'dedupKey', { unique: false });
         }
+        if (!recordsStore.indexNames.contains('connectionScope')) {
+          recordsStore.createIndex('connectionScope', 'connectionScope', { unique: false });
+        }
         if (!db.objectStoreNames.contains(STORE_SYNC_META)) {
           db.createObjectStore(STORE_SYNC_META, { keyPath: 'key' });
         }
@@ -74,7 +111,7 @@ export class UsageDatabase {
       const store = tx.objectStore(STORE_RECORDS);
 
       for (const record of records) {
-        store.put(record);
+        store.put({ ...record, connectionScope: this.scope });
       }
 
       return new Promise((resolve, reject) => {
@@ -108,7 +145,9 @@ export class UsageDatabase {
         const request = range ? index.getAll(range) : store.getAll();
 
         request.onsuccess = () => {
-          let results = (request.result as UsageRecord[]) || [];
+          let results = ((request.result as UsageRecord[]) || []).filter((record) =>
+            this.belongsToScope(record)
+          );
 
           if (filter.model) {
             results = results.filter((r) => r.model === filter.model);
@@ -153,9 +192,13 @@ export class UsageDatabase {
       return new Promise((resolve, reject) => {
         const tx = db.transaction(STORE_RECORDS, 'readonly');
         const store = tx.objectStore(STORE_RECORDS);
-        const countRequest = store.count();
-        countRequest.onsuccess = () => resolve(countRequest.result);
-        countRequest.onerror = () => reject(countRequest.error);
+        const allRequest = store.getAll();
+        allRequest.onsuccess = () =>
+          resolve(
+            ((allRequest.result as UsageRecord[]) || []).filter((record) => this.belongsToScope(record))
+              .length
+          );
+        allRequest.onerror = () => reject(allRequest.error);
       });
     } catch {
       return this.fallbackCount();
@@ -177,10 +220,12 @@ export class UsageDatabase {
         const tx = db.transaction(STORE_RECORDS, 'readonly');
         const index = tx.objectStore(STORE_RECORDS).index('dedupKey');
         for (const key of keys) {
-          const request = index.get(key);
+          const request = index.getAll(key);
           request.onsuccess = () => {
-            const record = request.result as UsageRecord | undefined;
-            if (record) {
+            const record = (request.result as UsageRecord[]).find((candidate) =>
+              this.belongsToScope(candidate)
+            );
+            if (record && !found.has(key)) {
               found.set(key, { id: record.id, collectorSource: record.collectorSource });
             }
           };
@@ -203,7 +248,15 @@ export class UsageDatabase {
         const request = index.openCursor(null, 'prev');
         request.onsuccess = () => {
           const cursor = request.result;
-          resolve(cursor ? (cursor.key as number) : null);
+          if (!cursor) {
+            resolve(null);
+            return;
+          }
+          if (this.belongsToScope(cursor.value as UsageRecord)) {
+            resolve(cursor.key as number);
+            return;
+          }
+          cursor.continue();
         };
         request.onerror = () => reject(request.error);
       });
@@ -217,7 +270,7 @@ export class UsageDatabase {
       const db = await this.open();
       return await new Promise((resolve, reject) => {
         const tx = db.transaction(STORE_SYNC_META, 'readonly');
-        const request = tx.objectStore(STORE_SYNC_META).get(SYNC_META_KEY);
+        const request = tx.objectStore(STORE_SYNC_META).get(this.syncMetaKey());
         request.onsuccess = () => {
           const value = request.result as { key: string; meta: UsageSyncMeta } | undefined;
           resolve(value?.meta || {});
@@ -226,7 +279,7 @@ export class UsageDatabase {
       });
     } catch {
       try {
-        const raw = localStorage.getItem('cpamc_usage_sync_meta');
+        const raw = localStorage.getItem(this.fallbackSyncMetaKey());
         return raw ? (JSON.parse(raw) as UsageSyncMeta) : {};
       } catch {
         return {};
@@ -238,14 +291,14 @@ export class UsageDatabase {
     try {
       const db = await this.open();
       const tx = db.transaction(STORE_SYNC_META, 'readwrite');
-      tx.objectStore(STORE_SYNC_META).put({ key: SYNC_META_KEY, meta });
+      tx.objectStore(STORE_SYNC_META).put({ key: this.syncMetaKey(), meta });
       return new Promise((resolve, reject) => {
         tx.oncomplete = () => resolve();
         tx.onerror = () => reject(tx.error);
       });
     } catch {
       try {
-        localStorage.setItem('cpamc_usage_sync_meta', JSON.stringify(meta));
+        localStorage.setItem(this.fallbackSyncMetaKey(), JSON.stringify(meta));
       } catch {
         // Ignored
       }
@@ -256,29 +309,36 @@ export class UsageDatabase {
     try {
       const db = await this.open();
       const tx = db.transaction([STORE_RECORDS, STORE_SYNC_META], 'readwrite');
-      tx.objectStore(STORE_RECORDS).clear();
-      // 清空本地记录时同步重置回填光标，下一次触发按默认窗口重新回填
-      tx.objectStore(STORE_SYNC_META).clear();
+      const records = tx.objectStore(STORE_RECORDS);
+      const cursorRequest = records.openCursor();
+      cursorRequest.onsuccess = () => {
+        const cursor = cursorRequest.result;
+        if (!cursor) return;
+        if (this.belongsToScope(cursor.value as UsageRecord)) cursor.delete();
+        cursor.continue();
+      };
+      // 清空当前连接的记录时同步重置当前连接的回填光标。
+      tx.objectStore(STORE_SYNC_META).delete(this.syncMetaKey());
       return new Promise((resolve, reject) => {
         tx.oncomplete = () => resolve();
         tx.onerror = () => reject(tx.error);
       });
     } catch {
-      localStorage.removeItem('cpamc_usage_fallback_records');
-      localStorage.removeItem('cpamc_usage_sync_meta');
+      localStorage.removeItem(this.fallbackRecordsKey());
+      localStorage.removeItem(this.fallbackSyncMetaKey());
     }
   }
 
   // LocalStorage Fallback Mechanisms
   private fallbackSave(records: UsageRecord[]): void {
     try {
-      const existingStr = localStorage.getItem('cpamc_usage_fallback_records') || '[]';
+      const existingStr = localStorage.getItem(this.fallbackRecordsKey()) || '[]';
       const existing: UsageRecord[] = JSON.parse(existingStr);
       const map = new Map<string, UsageRecord>();
       existing.forEach((r) => map.set(r.id, r));
       records.forEach((r) => map.set(r.id, r));
       const merged = Array.from(map.values()).slice(-2000);
-      localStorage.setItem('cpamc_usage_fallback_records', JSON.stringify(merged));
+      localStorage.setItem(this.fallbackRecordsKey(), JSON.stringify(merged));
     } catch {
       // Ignored
     }
@@ -286,7 +346,7 @@ export class UsageDatabase {
 
   private fallbackQuery(filter: UsageFilterParams): UsageRecord[] {
     try {
-      const existingStr = localStorage.getItem('cpamc_usage_fallback_records') || '[]';
+      const existingStr = localStorage.getItem(this.fallbackRecordsKey()) || '[]';
       let results: UsageRecord[] = JSON.parse(existingStr);
 
       const { startTime, endTime } = filter.timeRange;
@@ -321,7 +381,7 @@ export class UsageDatabase {
 
   private fallbackCount(): number {
     try {
-      const existingStr = localStorage.getItem('cpamc_usage_fallback_records') || '[]';
+      const existingStr = localStorage.getItem(this.fallbackRecordsKey()) || '[]';
       return JSON.parse(existingStr).length;
     } catch {
       return 0;

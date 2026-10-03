@@ -22,7 +22,7 @@ import {
   type ProviderModelAliasIndex,
 } from './collector/logCollector';
 import { collectPluginBackfill } from './collector/pluginBackfillCollector';
-import { usageStorage } from './storage/usageStorage';
+import { createUsageStorage } from './storage/usageStorage';
 import { usePricingStore } from './hooks/usePricingStore';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { normalizeApiBase } from '@/utils/connection';
@@ -34,17 +34,24 @@ type ActiveTab = 'overview' | 'analytics' | 'requests' | 'pricing';
 // (上游模型名, 客户端可见名) → baseUrl：插件回填行 api-key source 的反查索引。
 // 60s 缓存，避免随 15s 采集周期反复请求配置。
 const PROVIDER_INDEX_TTL_MS = 60_000;
+const USAGE_QUEUE_BATCH_SIZE = 200;
+const MAX_USAGE_QUEUE_BATCHES_PER_REFRESH = 10;
 let providerIndexCache: {
+  scope: string;
   at: number;
   instanceIndex: ProviderInstanceIndex;
   modelAliasIndex: ProviderModelAliasIndex;
 } | null = null;
 
-async function getProviderIndexes(): Promise<{
+async function getProviderIndexes(scope: string): Promise<{
   instanceIndex: ProviderInstanceIndex;
   modelAliasIndex: ProviderModelAliasIndex;
 }> {
-  if (providerIndexCache && Date.now() - providerIndexCache.at < PROVIDER_INDEX_TTL_MS) {
+  if (
+    providerIndexCache &&
+    providerIndexCache.scope === scope &&
+    Date.now() - providerIndexCache.at < PROVIDER_INDEX_TTL_MS
+  ) {
     return {
       instanceIndex: providerIndexCache.instanceIndex,
       modelAliasIndex: providerIndexCache.modelAliasIndex,
@@ -59,7 +66,7 @@ async function getProviderIndexes(): Promise<{
   } catch {
     // 配置不可用时退化为遮蔽形态，不阻塞采集
   }
-  providerIndexCache = { at: Date.now(), instanceIndex, modelAliasIndex };
+  providerIndexCache = { scope, at: Date.now(), instanceIndex, modelAliasIndex };
   return { instanceIndex, modelAliasIndex };
 }
 
@@ -77,6 +84,8 @@ export function UsagePage() {
   const refreshInFlightRef = useRef<Promise<void> | null>(null);
   const getAllRules = usePricingStore((state) => state.getAllRules);
   const authApiBase = useAuthStore((state) => state.apiBase);
+  const storageScope = normalizeApiBase(authApiBase) || 'default';
+  const storage = useMemo(() => createUsageStorage(storageScope), [storageScope]);
 
   // 切换页签时重放入场级联（容器随 key 重挂载）
   const revealRef = useRevealGroup<HTMLDivElement>();
@@ -108,47 +117,50 @@ export function UsagePage() {
 
   const { records, totalCount, refetch, clearRecords } = useUsageRecords(
     filterParams,
-    autoRefresh
+    autoRefresh,
+    storage
   );
   const analytics = useUsageAnalytics(records, filterParams.timeRange.startTime);
 
   // Usage queue collector: pops finished-request usage records from CPA
   const collectUsageQueue = useCallback(async () => {
     try {
-      const [raw, { instanceIndex }] = await Promise.all([
-        logsApi.fetchUsageQueue(200),
-        getProviderIndexes(),
-      ]);
-      if (!Array.isArray(raw) || raw.length === 0) return;
+      const { instanceIndex } = await getProviderIndexes(storageScope);
       const rules = getAllRules();
-      const parsedRecords = raw
-        .map((item) => parseUsageQueueRecord(item, rules, instanceIndex))
-        .filter((r): r is NonNullable<typeof r> => r !== null);
+      for (let batch = 0; batch < MAX_USAGE_QUEUE_BATCHES_PER_REFRESH; batch += 1) {
+        const raw = await logsApi.fetchUsageQueue(USAGE_QUEUE_BATCH_SIZE);
+        if (!Array.isArray(raw) || raw.length === 0) return;
+        const parsedRecords = raw
+          .map((item) => parseUsageQueueRecord(item, rules, instanceIndex))
+          .filter((r): r is NonNullable<typeof r> => r !== null);
 
-      if (parsedRecords.length > 0) {
-        await usageStorage.saveRecords(parsedRecords);
+        if (parsedRecords.length > 0) {
+          await storage.saveRecords(parsedRecords);
+        }
+        if (raw.length < USAGE_QUEUE_BATCH_SIZE) return;
       }
     } catch {
       // Ignored in background
     }
-  }, [getAllRules]);
+  }, [getAllRules, storage, storageScope]);
 
   // 插件库回填采集器：页面关闭/进程重启期间 usage-queue 丢失的记录，
   // 从插件持久化库（365 天）对账补齐。挂载、手动刷新、页面重新可见时触发。
   const collectBackfill = useCallback(async () => {
     try {
-      const { modelAliasIndex } = await getProviderIndexes();
+      const { modelAliasIndex } = await getProviderIndexes(storageScope);
       await collectPluginBackfill({
         baseUrl: normalizeApiBase(authApiBase),
         pricingRules: getAllRules(),
         modelAliasIndex,
+        storage,
         requestedStart: filterParams.timeRange.startTime,
         walkOlder: timeRange === 'all',
       });
     } catch {
       // 回填失败不阻塞实时采集，光标未前进，下次触发重试
     }
-  }, [authApiBase, getAllRules, filterParams.timeRange.startTime, timeRange]);
+  }, [authApiBase, getAllRules, filterParams.timeRange.startTime, storage, storageScope, timeRange]);
 
   // 所有入口共享同一刷新任务，避免并发弹出队列或重复查询 IndexedDB。
   const handleRefresh = useCallback((): Promise<void> => {

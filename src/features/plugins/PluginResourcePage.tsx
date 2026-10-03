@@ -116,6 +116,7 @@ export function PluginResourcePage() {
           className={styles.frame}
           src={iframeSrc}
           title={resource.label}
+          sandbox="allow-forms allow-scripts"
           referrerPolicy="no-referrer"
           allow="clipboard-read; clipboard-write"
         />

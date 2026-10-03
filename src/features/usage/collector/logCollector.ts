@@ -187,6 +187,34 @@ export function buildProviderInstanceIndex(rawConfig: unknown): ProviderInstance
     }
   }
 
+  // v8 groups live under api-keys.<family> and carry their base-url/policy on
+  // the group while credentials live in group.keys. Keep legacy v0 parsing
+  // above because the backend still exposes both shapes during migration.
+  const v8Groups = config['api-keys'];
+  if (typeof v8Groups === 'object' && v8Groups !== null) {
+    for (const [family, rawGroups] of Object.entries(v8Groups as Record<string, unknown>)) {
+      if (!Array.isArray(rawGroups)) continue;
+      for (const group of rawGroups) {
+        if (typeof group !== 'object' || group === null) continue;
+        const groupRecord = group as Record<string, unknown>;
+        const groupBaseUrl = groupRecord['base-url'];
+        const groupName = typeof groupRecord.name === 'string' ? groupRecord.name : family;
+        addRecord(groupRecord, groupName, groupBaseUrl);
+        const keys = groupRecord.keys;
+        if (!Array.isArray(keys)) continue;
+        for (const key of keys) {
+          if (typeof key !== 'object' || key === null) continue;
+          const keyRecord = key as Record<string, unknown>;
+          addRecord(
+            { ...groupRecord, ...keyRecord },
+            groupName,
+            keyRecord['base-url'] ?? groupBaseUrl
+          );
+        }
+      }
+    }
+  }
+
   return index;
 }
 
@@ -222,6 +250,31 @@ export function buildProviderModelAliasIndex(rawConfig: unknown): ProviderModelA
           index.delete(key); // 同名多线路，无法唯一定位，放弃该键
         } else {
           index.set(key, url);
+        }
+      }
+    }
+  }
+
+  const v8Groups = config['api-keys'];
+  if (typeof v8Groups === 'object' && v8Groups !== null) {
+    for (const rawGroups of Object.values(v8Groups as Record<string, unknown>)) {
+      if (!Array.isArray(rawGroups)) continue;
+      for (const group of rawGroups) {
+        if (typeof group !== 'object' || group === null) continue;
+        const groupRecord = group as Record<string, unknown>;
+        const baseUrl = typeof groupRecord['base-url'] === 'string' ? groupRecord['base-url'].trim() : '';
+        if (!baseUrl || !isHttpUrl(baseUrl)) continue;
+        const models = groupRecord.models;
+        if (!Array.isArray(models)) continue;
+        for (const model of models) {
+          if (typeof model !== 'object' || model === null) continue;
+          const entry = model as Record<string, unknown>;
+          const name = typeof entry.name === 'string' ? entry.name.trim() : '';
+          if (!name) continue;
+          const alias = typeof entry.alias === 'string' ? entry.alias.trim() : '';
+          const key = `${name}::${alias || name}`;
+          if (index.has(key) && index.get(key) !== baseUrl) index.delete(key);
+          else index.set(key, baseUrl);
         }
       }
     }
@@ -305,9 +358,10 @@ export function parseUsageQueueRecord(
   const sourceIsSecret = Boolean(
     rawSource && maskInstanceLabel(rawSource, authType) !== rawSource
   );
+  const dedupKey = buildUsageDedupKey(timestamp, model, totalTokens, latencyMs);
 
   return {
-    id: requestId || `${timestamp}_${Math.trunc(int64(record.latency_ms))}`,
+    id: requestId || dedupKey,
     requestId: requestId || '--------',
     timestamp,
     model,
@@ -330,7 +384,7 @@ export function parseUsageQueueRecord(
     sourceIp: (record.client_ip || '').trim() || undefined,
     usage,
     estimatedCostUsd: calculateUsageCost(usage, rule),
-    dedupKey: buildUsageDedupKey(timestamp, model, totalTokens, latencyMs),
+    dedupKey,
     collectorSource: 'usage-queue',
     errorMessage: failed
       ? redactKnownSecrets(record.fail?.body, [

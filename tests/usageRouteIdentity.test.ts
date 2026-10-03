@@ -3,6 +3,7 @@ import {
   parseUsageQueueRecord,
   maskInstanceLabel,
   buildProviderInstanceIndex,
+  buildProviderModelAliasIndex,
   type ProviderInstanceIndex,
 } from '../src/features/usage/collector/logCollector';
 import type { ModelPricingRule } from '../src/types/usage';
@@ -94,6 +95,14 @@ describe('usage route identity', () => {
     expect(record!.modelAlias).toBeUndefined();
     expect(record!.requestedModel).toBeUndefined();
     expect(record!.normalizedModel).toBe('internal-unknown-model');
+  });
+
+  test('falls back to the dedup key when the backend omits request_id', () => {
+    const first = parseUsageQueueRecord(basePayload({ request_id: undefined, model: 'model-a' }), pricingRules);
+    const second = parseUsageQueueRecord(basePayload({ request_id: undefined, model: 'model-b' }), pricingRules);
+    expect(first!.id).toBe(first!.dedupKey);
+    expect(second!.id).toBe(second!.dedupKey);
+    expect(first!.id).not.toBe(second!.id);
   });
 
   test('token, cache and cost accounting unchanged', () => {
@@ -210,6 +219,26 @@ describe('usage route identity', () => {
       ],
     });
     expect(unsafeIndex.size).toBe(0);
+  });
+
+  test('v8 api-keys groups resolve both credential and model-alias indexes', () => {
+    const raw = {
+      'api-keys': {
+        codex: [
+          {
+            name: 'moyuu',
+            'base-url': 'https://relay-v8.example/v1',
+            keys: [{ 'api-key': moyuuKey, 'auth-index': 'v8-index' }],
+            models: [{ name: 'gpt-6-astra', alias: 'astra-relay' }],
+          },
+        ],
+      },
+    };
+    const instances = buildProviderInstanceIndex(raw);
+    expect(instances.get('v8-index')?.baseUrl).toBe('https://relay-v8.example/v1');
+    expect(instances.get(moyuuKey)?.baseUrl).toBe('https://relay-v8.example/v1');
+    const aliases = buildProviderModelAliasIndex(raw);
+    expect(aliases.get('gpt-6-astra::astra-relay')).toBe('https://relay-v8.example/v1');
   });
 
   test('reasoning effort is captured from payload', () => {
