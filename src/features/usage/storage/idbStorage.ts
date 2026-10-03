@@ -32,6 +32,7 @@ export class UsageDatabase {
     try {
       const existing = localStorage.getItem(LEGACY_SCOPE_KEY)?.trim();
       if (existing) return existing;
+      if (this.scope === 'default') return '';
       localStorage.setItem(LEGACY_SCOPE_KEY, this.scope);
     } catch {
       // Test and restricted-storage environments have no durable marker.

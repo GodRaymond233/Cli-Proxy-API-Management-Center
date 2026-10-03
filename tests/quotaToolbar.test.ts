@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 
-const source = readFileSync('src/features/quota/QuotaPage.tsx', 'utf8');
-const styles = readFileSync('src/features/quota/QuotaPage.module.scss', 'utf8');
+const source = readFileSync('src/features/quota/QuotaPage.tsx', 'utf8').replace(/\r\n/g, '\n');
+const styles = readFileSync('src/features/quota/QuotaPage.module.scss', 'utf8').replace(/\r\n/g, '\n');
 
 describe('quota toolbar presentation contracts', () => {
   test('uses a named, explicit clear action and restores input focus', () => {

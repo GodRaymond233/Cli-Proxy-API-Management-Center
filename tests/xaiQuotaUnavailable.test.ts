@@ -22,6 +22,8 @@ import {
 } from '@/utils/quota';
 import type { XaiBillingConfig, XaiQuotaState } from '@/types';
 
+const normalizeCurrency = (markup: string): string => markup.replaceAll('US$', '$');
+
 const classes = bindQuotaClasses(
   Object.fromEntries(QUOTA_CLASS_KEYS.map((key) => [key, key])),
   'test-host'
@@ -197,8 +199,9 @@ describe('XaiQuotaBody unavailable weekly usage', () => {
     expect(markup).toContain(formatInstantShort(Date.parse(WEEKLY_PERIOD_END)));
     expect(markup).toContain('GrokChat usage');
     expect(markup).toContain('Prepaid');
-    expect(markup).toContain('$2.50');
-    expect(markup).toContain('$0.00 / $0.00');
+    const normalized = normalizeCurrency(markup);
+    expect(normalized).toContain('$2.50');
+    expect(normalized).toContain('$0.00 / $0.00');
   });
 
   test('keeps monthly amount, percentage, and meter in the remaining direction', () => {
@@ -212,8 +215,9 @@ describe('XaiQuotaBody unavailable weekly usage', () => {
       )
     );
     expect(markup).toContain('>90%<');
-    expect(markup).toContain('$135.00 / $150.00');
-    expect(markup).not.toContain('$15.00 / $150.00');
+    const normalized = normalizeCurrency(markup);
+    expect(normalized).toContain('$135.00 / $150.00');
+    expect(normalized).not.toContain('$15.00 / $150.00');
     expect(markup).toContain('width:90%');
   });
 
